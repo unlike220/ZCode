@@ -1,16 +1,40 @@
 import type { FileSystemPort, TraceContext } from "@zcode/contracts";
 import { readProjectIntelligenceState } from "./state.js";
 import { selectProjectIntelligenceState } from "./relevance.js";
+import { buildRepositoryFactsTurnContext } from "./repository-context.js";
 
 const DEFAULT_PROJECT_CONTEXT_CHAR_BUDGET = 6_000;
 
-export async function buildProjectIntelligenceTurnContext(input: {
+interface ProjectContextInput {
   fileSystemPort: FileSystemPort;
   query: string;
   rootDir: string;
   traceContext?: TraceContext;
   maxChars?: number;
-}): Promise<string | null> {
+  onProjectionError?: (kind: "state" | "repository", error: unknown) => void;
+}
+
+export async function buildProjectIntelligenceTurnContext(
+  input: ProjectContextInput,
+): Promise<string | null> {
+  const project = await buildProjectStateContext(input).catch((error: unknown) => {
+    input.onProjectionError?.("state", error);
+    return null;
+  });
+  const facts = await buildRepositoryFactsTurnContext(input).catch((error: unknown) => {
+    input.onProjectionError?.("repository", error);
+    return null;
+  });
+  if (!project && !facts) return null;
+  const budget = normalizeBudget(input.maxChars);
+  const stateBudget = budget - (facts ? Math.min(facts.length + 2, Math.floor(budget / 3)) : 0);
+  return truncateContext(
+    [project ? truncateContext(project, stateBudget) : null, facts].filter(Boolean).join("\n\n"),
+    budget,
+  );
+}
+
+async function buildProjectStateContext(input: ProjectContextInput): Promise<string | null> {
   const { state } = await readProjectIntelligenceState(
     input.fileSystemPort,
     input.rootDir,

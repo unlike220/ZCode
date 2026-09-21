@@ -22,8 +22,7 @@ import {
 } from "../../agent/message-history.js";
 import type { AgentRuntimeInternal } from "../internal.js";
 import { runModelBackedTurnStep } from "./turn-model-step.js";
-import { buildProjectIntelligenceTurnContext } from "../../project-intelligence/context.js";
-import { resolveRuntimeProjectIntelligenceRoot } from "../helpers/project-intelligence.js";
+import { appendRuntimeProjectIntelligenceContext } from "../helpers/project-intelligence.js";
 import {
   AUTOMATION_MUTATION_TOOL_NAMES,
   evaluateRapidRefill,
@@ -168,34 +167,7 @@ export async function runRegularTurnLoop(
       ]);
     }
     if (state.modelStepCount === 0 && !outputTokenRecoveryActive && this.fileSystemPort) {
-      const projectIntelligenceRoot = resolveRuntimeProjectIntelligenceRoot(
-        this.config,
-        this.workspaceRoot,
-      );
-      if (projectIntelligenceRoot) {
-        try {
-          const projectContext = await buildProjectIntelligenceTurnContext({
-            fileSystemPort: this.fileSystemPort,
-            query: state.input,
-            rootDir: projectIntelligenceRoot,
-            traceContext: state.turnTraceContext,
-          });
-          if (projectContext) {
-            // Turn-local only: keep the fresh workspace projection for every model step
-            // in this turn without appending a stale snapshot to durable message history.
-            appendTurnRequestEntries(state.turnRequestState, [
-              systemReminderAttachmentEntry("project_intelligence", projectContext),
-            ]);
-          }
-        } catch (error) {
-          this.logger?.warn("Project Intelligence context skipped", {
-            ...traceContextToLogContext(state.turnTraceContext),
-            event: "project_intelligence.context.skipped",
-            module: "core.runtime",
-            reason: error instanceof Error ? error.message : "unknown error",
-          });
-        }
-      }
+      await appendRuntimeProjectIntelligenceContext(this, state);
     }
     const providerEntries = [...state.turnRequestState.entries];
     const requestEntries = providerEntries;

@@ -57,6 +57,7 @@ import {
 } from "./turn-control.js";
 import { mergeToolExecutionTelemetry, readToolExecutionTelemetry } from "../handlers/tool-perf.js";
 import type { ToolExecuteOptions, ToolExecutorDeps } from "./types.js";
+import { invalidateFactsForTool } from "./repository-facts.js";
 import { validateInitialModelToolInput, validateInput, validateOutput } from "./validation.js";
 import type { ExecutableToolCall } from "../types.js";
 import { resolveEmbeddedSearchBranchCapability } from "../../embedded-search/capability.js";
@@ -324,6 +325,7 @@ async function executeToolCallImpl(
   const permissionWaitMs = permissionResult.permissionWaitMs;
 
   const startTime = Date.now();
+  await invalidateFactsForTool(deps, entry, executionInput, traceContext);
   // 按**执行入参**解析一次副作用旗标（Bash 的只读命令判定就在这里落定），随 ToolCallStarted 发出：
   // 事件先于 handler，所以订阅者（dynamic-workflow driver 的导入缓存关门）在第一个字节落盘前就知道。
   await emitToolCallStarted(
@@ -635,6 +637,7 @@ async function executeToolCallImpl(
     return result;
   } finally {
     unlinkParentAbort();
+    await invalidateFactsForTool(deps, entry, executionInput, traceContext);
   }
 }
 

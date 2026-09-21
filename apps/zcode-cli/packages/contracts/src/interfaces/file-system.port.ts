@@ -61,6 +61,8 @@ export type FileSystemTextEncoding = BufferEncoding | "gb2312" | "gbk" | "gb1803
 export interface FileSystemStatRequest {
   /** Normalized absolute path. Relative paths are resolved by the tool layer. */
   path: string;
+  /** False inspects the link itself; callers can refuse traversal through symlinks. */
+  followSymlinks?: boolean;
   trace?: TraceContext;
 }
 
@@ -195,6 +197,8 @@ export interface FileSystemRemoveFileResult {
 export interface FileSystemListDirectoryRequest {
   /** Normalized absolute directory path. Relative paths are resolved by the caller. */
   path: string;
+  /** Fail with too_large before materializing more entries; omitted preserves existing behavior. */
+  maxEntries?: number;
   trace?: TraceContext;
 }
 

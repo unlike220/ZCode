@@ -2,6 +2,9 @@
 
 Status: Phase 1 implementation spec
 
+Phase 2 derived repository facts are specified separately in
+[Repository Facts](./repository-facts.md). They do not change this state schema.
+
 ## Goal
 
 Give the coding agent a workspace-scoped, structured project model that survives sessions without replaying chat history. The model stores durable task/decision/unknown/evidence state, exposes explicit read/update tools, and injects only a bounded relevant projection into the current turn.

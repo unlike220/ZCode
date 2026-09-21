@@ -3,8 +3,19 @@
 // ============================================================
 
 import { createHash, randomBytes } from "node:crypto";
-import { constants } from "node:fs";
-import { lstat, mkdir, open, readdir, readFile, rename, stat, unlink, writeFile } from "node:fs/promises";
+import { constants, type Dirent } from "node:fs";
+import {
+  lstat,
+  mkdir,
+  open,
+  opendir,
+  readdir,
+  readFile,
+  rename,
+  stat,
+  unlink,
+  writeFile,
+} from "node:fs/promises";
 import { basename, dirname, extname, isAbsolute, join, normalize, relative, sep } from "node:path";
 import { Worker } from "node:worker_threads";
 import type { RgArg, RipgrepBufferedResult } from "ripgrep";
@@ -131,7 +142,7 @@ export class NodeFileSystemAdapter implements FileSystemPort {
   async stat(request: FileSystemStatRequest): Promise<FileSystemStatResult> {
     const path = resolveAbsoluteRequestPath(request.path);
     try {
-      const info = await stat(path);
+      const info = await (request.followSymlinks === false ? lstat(path) : stat(path));
       const kind = nodeKind(info);
       return {
         path,
@@ -369,7 +380,30 @@ export class NodeFileSystemAdapter implements FileSystemPort {
         });
       }
 
-      const entries = await readdir(path, { withFileTypes: true });
+      let entries: Dirent[];
+      if (request.maxEntries === undefined) {
+        entries = await readdir(path, { withFileTypes: true });
+      } else {
+        entries = [];
+        if (!Number.isSafeInteger(request.maxEntries) || request.maxEntries < 1) {
+          throw createFileSystemError({
+            code: "invalid_path",
+            path,
+            message: "Invalid directory entry limit",
+          });
+        }
+        for await (const entry of await opendir(path)) {
+          throwIfAborted(options?.signal);
+          if (entries.length >= request.maxEntries) {
+            throw createFileSystemError({
+              code: "too_large",
+              path,
+              message: "Directory entry limit exceeded",
+            });
+          }
+          entries.push(entry);
+        }
+      }
       throwIfAborted(options?.signal);
       const mapped = entries
         .map((entry) => ({
@@ -596,8 +630,7 @@ async function searchTextWithJavaScript(
     const mode = request.outputMode ?? "files_with_matches";
     const candidates = await collectTextSearchCandidates(path, rootInfo, request, signal);
 
-    const searchRequest =
-      mode === "content" ? request : { ...request, onlyMatching: false };
+    const searchRequest = mode === "content" ? request : { ...request, onlyMatching: false };
     const contentEntries: FileSystemSearchTextEntry[] = [];
     const countEntries: FileSystemSearchTextEntry[] = [];
     const matchingFiles: Array<{ path: string; mtimeMs: number }> = [];
@@ -740,7 +773,9 @@ async function atomicWrite(path: string, content: Buffer): Promise<void> {
       constants.O_WRONLY | constants.O_CREAT | constants.O_TRUNC | constants.O_NOFOLLOW,
     ).catch((error: unknown) => {
       if (getNodeErrorCode(error) === "ELOOP") {
-        throw new SymlinkWriteRefusedError(`Refusing to write through symlink: ${path} (O_NOFOLLOW)`);
+        throw new SymlinkWriteRefusedError(
+          `Refusing to write through symlink: ${path} (O_NOFOLLOW)`,
+        );
       }
       throw error;
     });
@@ -1187,11 +1222,13 @@ function parseRipgrepJsonOutput(
         const lineNumber =
           typeof event.data?.line_number === "number" ? event.data.line_number : undefined;
         for (const submatch of submatches) {
-          entries.push(...createOnlyMatchingEntries({
-            path,
-            text: submatch.match?.text ?? "",
-            lineNumber,
-          }));
+          entries.push(
+            ...createOnlyMatchingEntries({
+              path,
+              text: submatch.match?.text ?? "",
+              lineNumber,
+            }),
+          );
         }
         continue;
       }
@@ -1603,8 +1640,8 @@ function createOnlyMatchingContentEntries(input: {
 }): FileSystemSearchTextEntry[] {
   const matchedLineIndexes = createMatchedLineIndexes(input.matches.ranges);
 
-  return createContextLineIndexes(input.lines.length, input.matches.ranges, input.request)
-    .flatMap((lineIndex) => {
+  return createContextLineIndexes(input.lines.length, input.matches.ranges, input.request).flatMap(
+    (lineIndex) => {
       const matchedEntries = input.matches.entriesByLine.get(lineIndex);
       if (matchedEntries) return matchedEntries;
       if (matchedLineIndexes.has(lineIndex)) return [];
@@ -1616,7 +1653,8 @@ function createOnlyMatchingContentEntries(input: {
           matched: false,
         },
       ];
-    });
+    },
+  );
 }
 
 function createContextLineIndexes(
@@ -1668,21 +1706,18 @@ function createOnlyMatchingEntries(input: {
 
   // ripgrep 只把 LF/CRLF 当作输出行边界；单独的 CR 是普通匹配文本。
   // 同时，跨行 match 内部的空行不生成 entry，但整段零长度 match 需要保留空 entry。
-  return input.text
-    .split(/\r?\n/)
-    .flatMap((line, index) =>
-      line.length === 0
-        ? []
-        : [
-            {
-              path: input.path,
-              lineNumber:
-                input.lineNumber === undefined ? undefined : input.lineNumber + index,
-              text: line,
-              matched: true,
-            },
-          ],
-    );
+  return input.text.split(/\r?\n/).flatMap((line, index) =>
+    line.length === 0
+      ? []
+      : [
+          {
+            path: input.path,
+            lineNumber: input.lineNumber === undefined ? undefined : input.lineNumber + index,
+            text: line,
+            matched: true,
+          },
+        ],
+  );
 }
 
 function splitRipgrepSearchLines(content: string): string[] {

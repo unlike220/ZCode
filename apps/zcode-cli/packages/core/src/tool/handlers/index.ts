@@ -39,6 +39,10 @@ import { skillToolEntry } from "./skill.js";
 import { todoReadToolEntry, todoWriteToolEntry } from "./todo.js";
 import { projectStateReadToolEntry, projectStateUpdateToolEntry } from "./project-state.js";
 import {
+  repositoryFactsReadToolEntry,
+  repositoryFactsRefreshToolEntry,
+} from "./repository-facts.js";
+import {
   cronCreateToolEntry,
   cronDeleteToolEntry,
   cronListToolEntry,
@@ -88,6 +92,8 @@ export const builtInTools: ToolEntry[] = [
   todoWriteToolEntry,
   projectStateReadToolEntry,
   projectStateUpdateToolEntry,
+  repositoryFactsReadToolEntry,
+  repositoryFactsRefreshToolEntry,
   cronCreateToolEntry,
   cronListToolEntry,
   cronUpdateToolEntry,
@@ -226,7 +232,8 @@ export function registerBuiltInTools(
       continue;
     }
     if (
-      entry.metadata.name === "ProjectStateUpdate" &&
+      (entry.metadata.name === "ProjectStateUpdate" ||
+        entry.metadata.name === "RepositoryFactsRefresh") &&
       options.includeProjectStateUpdate !== true
     ) {
       continue;

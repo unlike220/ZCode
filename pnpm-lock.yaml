@@ -389,6 +389,9 @@ importers:
       meriyah:
         specifier: ^7.1.1
         version: 7.1.2
+      typescript:
+        specifier: ^5.9.0
+        version: 5.9.3
       unbash:
         specifier: 4.0.1
         version: 4.0.1
