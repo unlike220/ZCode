@@ -37,6 +37,7 @@ import {
 import { isSubagentDispatchToolName } from "../compat.js";
 import { skillToolEntry } from "./skill.js";
 import { todoReadToolEntry, todoWriteToolEntry } from "./todo.js";
+import { projectStateReadToolEntry, projectStateUpdateToolEntry } from "./project-state.js";
 import {
   cronCreateToolEntry,
   cronDeleteToolEntry,
@@ -85,6 +86,8 @@ export const builtInTools: ToolEntry[] = [
   webSearchToolEntry,
   todoReadToolEntry,
   todoWriteToolEntry,
+  projectStateReadToolEntry,
+  projectStateUpdateToolEntry,
   cronCreateToolEntry,
   cronListToolEntry,
   cronUpdateToolEntry,
@@ -172,6 +175,8 @@ interface RegisterBuiltInToolsOptions {
   includeEscalate?: boolean;
   includeWorkflow?: boolean;
   includeAutomation?: boolean;
+  /** ProjectStateUpdate is owned by main project sessions, not child agents. */
+  includeProjectStateUpdate?: boolean;
   /** Off-Peak 会话内创建工具面；由 host 的 offPeakToolEnabled flag（灰度/远程门）驱动。 */
   includeOffPeak?: boolean;
   /**
@@ -218,6 +223,12 @@ export function registerBuiltInTools(
       continue;
     }
     if (entry.metadata.name === "Skill" && options.includeSkill === false) {
+      continue;
+    }
+    if (
+      entry.metadata.name === "ProjectStateUpdate" &&
+      options.includeProjectStateUpdate !== true
+    ) {
       continue;
     }
     if (entry.metadata.name === "SendMessage" && options.includeSendMessage !== true) {
