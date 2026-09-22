@@ -2,6 +2,7 @@ import type { FileSystemPort, TraceContext } from "@zcode/contracts";
 import { readProjectIntelligenceState } from "./state.js";
 import { selectProjectIntelligenceState } from "./relevance.js";
 import { buildRepositoryFactsTurnContext } from "./repository-context.js";
+import { buildProjectWorkTurnContext } from "./work-context.js";
 
 const DEFAULT_PROJECT_CONTEXT_CHAR_BUDGET = 6_000;
 
@@ -11,25 +12,37 @@ interface ProjectContextInput {
   rootDir: string;
   traceContext?: TraceContext;
   maxChars?: number;
-  onProjectionError?: (kind: "state" | "repository", error: unknown) => void;
+  onProjectionError?: (kind: "state" | "repository" | "work", error: unknown) => void;
 }
 
 export async function buildProjectIntelligenceTurnContext(
   input: ProjectContextInput,
 ): Promise<string | null> {
+  // Preserve the established Phase 1 -> Phase 2 projection/error order. Project Work is
+  // independently read between them, then prioritized in the final bounded projection.
   const project = await buildProjectStateContext(input).catch((error: unknown) => {
     input.onProjectionError?.("state", error);
+    return null;
+  });
+  const work = await buildProjectWorkTurnContext(input).catch((error: unknown) => {
+    input.onProjectionError?.("work", error);
     return null;
   });
   const facts = await buildRepositoryFactsTurnContext(input).catch((error: unknown) => {
     input.onProjectionError?.("repository", error);
     return null;
   });
-  if (!project && !facts) return null;
+  if (!work && !project && !facts) return null;
+
   const budget = normalizeBudget(input.maxChars);
-  const stateBudget = budget - (facts ? Math.min(facts.length + 2, Math.floor(budget / 3)) : 0);
+  const reservedChars = (work?.length ?? 0) + (facts?.length ?? 0) + (work && facts ? 4 : 0);
+  const stateBudget = Math.max(1_000, budget - reservedChars);
+  // Current controlled work is highest-priority operational context. The final hard budget
+  // remains authoritative when callers request an unusually small projection.
   return truncateContext(
-    [project ? truncateContext(project, stateBudget) : null, facts].filter(Boolean).join("\n\n"),
+    [work, project ? truncateContext(project, stateBudget) : null, facts]
+      .filter(Boolean)
+      .join("\n\n"),
     budget,
   );
 }

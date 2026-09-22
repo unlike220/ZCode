@@ -38,6 +38,7 @@ import { isSubagentDispatchToolName } from "../compat.js";
 import { skillToolEntry } from "./skill.js";
 import { todoReadToolEntry, todoWriteToolEntry } from "./todo.js";
 import { projectStateReadToolEntry, projectStateUpdateToolEntry } from "./project-state.js";
+import { projectWorkReadToolEntry, projectWorkUpdateToolEntry } from "./project-work.js";
 import {
   repositoryFactsReadToolEntry,
   repositoryFactsRefreshToolEntry,
@@ -92,6 +93,8 @@ export const builtInTools: ToolEntry[] = [
   todoWriteToolEntry,
   projectStateReadToolEntry,
   projectStateUpdateToolEntry,
+  projectWorkReadToolEntry,
+  projectWorkUpdateToolEntry,
   repositoryFactsReadToolEntry,
   repositoryFactsRefreshToolEntry,
   cronCreateToolEntry,
@@ -181,7 +184,7 @@ interface RegisterBuiltInToolsOptions {
   includeEscalate?: boolean;
   includeWorkflow?: boolean;
   includeAutomation?: boolean;
-  /** ProjectStateUpdate is owned by main project sessions, not child agents. */
+  /** Project Intelligence mutation tools are owned by main project sessions, not child agents. */
   includeProjectStateUpdate?: boolean;
   /** Off-Peak 会话内创建工具面；由 host 的 offPeakToolEnabled flag（灰度/远程门）驱动。 */
   includeOffPeak?: boolean;
@@ -233,6 +236,7 @@ export function registerBuiltInTools(
     }
     if (
       (entry.metadata.name === "ProjectStateUpdate" ||
+        entry.metadata.name === "ProjectWorkUpdate" ||
         entry.metadata.name === "RepositoryFactsRefresh") &&
       options.includeProjectStateUpdate !== true
     ) {

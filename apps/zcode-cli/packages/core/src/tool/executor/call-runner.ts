@@ -58,6 +58,11 @@ import {
 import { mergeToolExecutionTelemetry, readToolExecutionTelemetry } from "../handlers/tool-perf.js";
 import type { ToolExecuteOptions, ToolExecutorDeps } from "./types.js";
 import { invalidateFactsForTool } from "./repository-facts.js";
+import {
+  enforceProjectWorkMutationScope,
+  recordSuccessfulProjectWorkMutation,
+  type ProjectWorkMutationGuard,
+} from "./project-work.js";
 import { validateInitialModelToolInput, validateInput, validateOutput } from "./validation.js";
 import type { ExecutableToolCall } from "../types.js";
 import { resolveEmbeddedSearchBranchCapability } from "../../embedded-search/capability.js";
@@ -287,6 +292,23 @@ async function executeToolCallImpl(
     }
   }
 
+  // Controlled coding is an operational scope guard, separate from permission. Check
+  // deterministic targets before asking the user to approve an already-invalid mutation.
+  try {
+    await enforceProjectWorkMutationScope(deps, entry, executionInput, traceContext);
+  } catch (error) {
+    const result = appendPreToolAdditionalContextsToErrorResult(
+      createErrorResult(
+        canonicalToolCall,
+        error instanceof Error ? error : new Error(String(error)),
+      ),
+      preToolHookResult.additionalContexts,
+    );
+    await emitToolCallError(deps, canonicalToolCall.id, traceContext, turnId, result.error);
+    telemetry?.finishDenied("policy_denied");
+    return result;
+  }
+
   const permissionResult = await resolveToolPermission(
     deps,
     canonicalToolCall,
@@ -323,6 +345,29 @@ async function executeToolCallImpl(
   }
   executionInput = permissionResult.executionInput;
   const permissionWaitMs = permissionResult.permissionWaitMs;
+
+  // Approval may produce a different final execution input. Re-evaluate the scope against
+  // those exact bytes before any repository invalidation event or mutating handler runs.
+  let projectWorkGuard: ProjectWorkMutationGuard | undefined;
+  try {
+    projectWorkGuard = await enforceProjectWorkMutationScope(
+      deps,
+      entry,
+      executionInput,
+      traceContext,
+    );
+  } catch (error) {
+    const result = appendPreToolAdditionalContextsToErrorResult(
+      createErrorResult(
+        canonicalToolCall,
+        error instanceof Error ? error : new Error(String(error)),
+      ),
+      preToolHookResult.additionalContexts,
+    );
+    await emitToolCallError(deps, canonicalToolCall.id, traceContext, turnId, result.error);
+    telemetry?.finishDenied("policy_denied");
+    return result;
+  }
 
   const startTime = Date.now();
   await invalidateFactsForTool(deps, entry, executionInput, traceContext);
@@ -457,6 +502,7 @@ async function executeToolCallImpl(
       throw createToolHandlerFailureError(canonicalToolCall, output);
     }
     validateOutput(output, entry);
+    await recordSuccessfulProjectWorkMutation(deps, projectWorkGuard, traceContext);
     // node_repl 同时承载 Browser Use 与 CUA，不能在注册时把整个 server 标成 official。
     // CUA SDK 结果带 producer integrity metadata 时，才为本次序列化临时打开原子帧保护；
     // 否则通用 resultBudget 会截断/重排 image_ref，或非 authority 路径会把引用剥掉。

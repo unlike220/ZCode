@@ -258,6 +258,28 @@ export interface ToolInputResolutionContext {
 
 export type ToolInputResolutionResult = { result: true; input: unknown } | ToolHandlerFailure;
 
+export type WorkspaceMutationOperation =
+  | "write"
+  | "edit"
+  | "delete"
+  | "rename_source"
+  | "rename_destination"
+  | "other";
+
+export interface WorkspaceMutationTarget {
+  path: string;
+  operation: WorkspaceMutationOperation;
+}
+
+export type WorkspaceMutationDescriptor =
+  | { kind: "structured_paths"; targets: readonly WorkspaceMutationTarget[] }
+  | { kind: "opaque" };
+
+export interface WorkspaceMutationResolutionContext {
+  workingDirectory: string;
+  workspaceRoot: string;
+}
+
 export type ToolHandler<TInput = unknown, TOutput = unknown> = (
   input: TInput,
   context: ToolExecutionContext,
@@ -320,6 +342,15 @@ export interface ToolEntry extends ToolContractDeclaration {
     input: unknown,
     context: ToolInputResolutionContext,
   ) => Promise<ToolInputResolutionResult> | ToolInputResolutionResult;
+  /**
+   * Describes deterministic repository mutation targets after input normalization.
+   * This is execution metadata, not permission: the central executor may use it for
+   * workspace-scoped operational guards without changing existing approval policy.
+   */
+  resolveWorkspaceMutation?: (
+    input: unknown,
+    context: WorkspaceMutationResolutionContext,
+  ) => WorkspaceMutationDescriptor | undefined;
   formatModelContent?: (output: unknown) => ModelMessageContent;
   formatPersistedModelContent?: (
     input: ToolPersistedModelContentInput,

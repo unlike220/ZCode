@@ -265,6 +265,10 @@ export const editToolEntry: ToolEntry = {
     riskLevel: "medium",
     needsApproval: true,
   },
+  resolveWorkspaceMutation: (input) => {
+    const { file_path } = EditInputSchema.parse(input) as EditInput;
+    return { kind: "structured_paths", targets: [{ path: file_path, operation: "edit" }] };
+  },
   handler: editHandler,
   formatModelContent: formatEditModelContent,
   inputSchema: EditInputJsonSchema,

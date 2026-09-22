@@ -222,6 +222,10 @@ export const writeToolEntry: ToolEntry = {
     riskLevel: "medium",
     needsApproval: true,
   },
+  resolveWorkspaceMutation: (input) => {
+    const { file_path } = WriteInputSchema.parse(input) as WriteInput;
+    return { kind: "structured_paths", targets: [{ path: file_path, operation: "write" }] };
+  },
   handler: writeHandler,
   formatModelContent: formatWriteModelContent,
   inputSchema: WriteInputJsonSchema,
