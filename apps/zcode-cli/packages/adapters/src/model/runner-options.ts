@@ -10,6 +10,7 @@ import type {
   ResolvedAiSdkModel,
 } from "./runner-runtime.js";
 import { createModelRequestAttributionHeaders, type ModelStatusContext } from "./runner-status.js";
+import { assertModelRequestBudget, calculateModelRequestBudget } from "./request-budget.js";
 
 type ExperimentalIncludeWithResponseBody = {
   requestBody?: boolean;
@@ -55,7 +56,7 @@ export function createGenerateTextOptions(input: {
     responseJsonSchema: input.request.responseJsonSchema,
     resolved: input.resolved,
   });
-  return removeUndefined({
+  const options = removeUndefined({
     model: input.resolved.model,
     messages: toAiSdkMessages(input.request.messages, {
       apiFormat: resolveProviderApiFormat(providerOptions),
@@ -97,6 +98,8 @@ export function createGenerateTextOptions(input: {
         }
       : undefined,
   }) as AiSdkGenerateTextOptions;
+  assertProviderFacingRequestBudget(options, input.request.maxOutputTokens, input.resolved);
+  return options;
 }
 
 export function createStreamTextOptions(input: {
@@ -116,7 +119,7 @@ export function createStreamTextOptions(input: {
     providerKind: input.resolved.providerKind,
     providerOptions,
   });
-  return removeUndefined({
+  const options = removeUndefined({
     model: input.resolved.model,
     messages: toAiSdkMessages(input.request.messages, {
       apiFormat: resolveProviderApiFormat(providerOptions),
@@ -154,6 +157,25 @@ export function createStreamTextOptions(input: {
     // zcode-plan 的业务码可能只在流式响应尾部 body 里，需保留 responseBody 供错误分类读取。
     experimental_include: createStreamExperimentalInclude(input),
   }) as AiSdkStreamTextOptions;
+  assertProviderFacingRequestBudget(options, input.request.maxOutputTokens, input.resolved);
+  return options;
+}
+
+function assertProviderFacingRequestBudget(
+  options: Pick<AiSdkGenerateTextOptions, "messages" | "tools">,
+  requestedOutputTokens: number | undefined,
+  resolved: ResolvedAiSdkModel,
+): void {
+  const budget = calculateModelRequestBudget({
+    contextWindow: resolved.properties.contextWindow,
+    messages: options.messages ?? [],
+    requestedOutputTokens,
+    tools: options.tools as Record<string, unknown> | undefined,
+  });
+  assertModelRequestBudget({
+    budget,
+    model: { modelId: String(resolved.modelId), providerId: String(resolved.providerId) },
+  });
 }
 
 function createStreamExperimentalInclude(input: {

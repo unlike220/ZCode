@@ -105,6 +105,7 @@ export const ModelErrorCode = {
   ModelRequestCancelled: "model_request_cancelled",
   ModelRequestTimeout: "model_request_timeout",
   ModelRateLimited: "model_rate_limited",
+  ModelContextBudgetExceeded: "model_context_budget_exceeded",
   ModelContextExceeded: "model_context_exceeded",
 } as const;
 
@@ -139,6 +140,7 @@ export const ModelFailureReason = {
   ...ModelRetryReason,
   AuthFailed: "auth_failed",
   Cancelled: "cancelled",
+  LocalContextBudgetExceeded: "local_context_budget_exceeded",
   ContextExceeded: "context_exceeded",
   InvalidRequest: "invalid_request",
   ProviderNotConfigured: "provider_not_configured",

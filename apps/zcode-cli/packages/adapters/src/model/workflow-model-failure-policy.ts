@@ -66,7 +66,7 @@ const NOT_CONFIGURED_ERROR_CODES: ReadonlySet<string> = new Set([
 export type WorkflowModelFailurePolicy =
   | { decision: "retry" }
   | { decision: "stop"; kind: WorkflowProviderStopKind }
-  /** core 已压缩失败才会到这里：节点以 `ContextLimit` 失败，脚本可 catch，未 catch 则 errored。 */
+  /** 确定性的上下文预算失败：节点以 `ContextLimit` 失败，脚本可 catch，未 catch 则 errored。 */
   | { decision: "context_exceeded" }
   | { decision: "cancelled" };
 
@@ -102,6 +102,12 @@ export function resolveWorkflowModelFailurePolicy(
     failure.code !== ModelErrorCode.InvalidModelResponse
   ) {
     return { decision: "stop", kind: "invalid_request" };
+  }
+  if (failure.reason === ModelFailureReason.LocalContextBudgetExceeded) {
+    // 本地 preflight 已知请求在 provider 前就超出预算；复用 workflow 的终端
+    // ContextLimit 分支保留 typed cause，避免无上限预算把确定性失败重新排队，
+    // 也不把它包装成 ProviderStop 或触发新的 provider context recovery。
+    return { decision: "context_exceeded" };
   }
   return { decision: "retry" };
 }

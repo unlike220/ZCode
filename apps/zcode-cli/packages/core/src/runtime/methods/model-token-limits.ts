@@ -1,4 +1,7 @@
-import { DEFAULT_ZCODE_MODEL_CONTEXT_BUDGET_STRATEGY as DEFAULT_BUDGET_STRATEGY } from "@zcode/shared";
+import {
+  DEFAULT_ZCODE_MODEL_CONTEXT_BUDGET_STRATEGY as DEFAULT_BUDGET_STRATEGY,
+  MODEL_REQUEST_SAFETY_MARGIN_TOKENS,
+} from "@zcode/shared";
 import { traceContextToLogContext } from "../deps.js";
 import type { TraceContext } from "../deps.js";
 
@@ -31,7 +34,9 @@ export function resolveModelStepMaxOutputTokens(input: {
     return input.baselineMaxOutputTokens;
   }
 
-  const estimatedAvailable = Math.floor(input.contextWindow - input.estimatedCurrentUsage - 1_000);
+  const estimatedAvailable = Math.floor(
+    input.contextWindow - input.estimatedCurrentUsage - MODEL_REQUEST_SAFETY_MARGIN_TOKENS,
+  );
   if (estimatedAvailable <= 0) {
     // 本地估算不是 provider 权威拒绝；无正数可发送时保留 baseline 走既有错误恢复。
     return input.baselineMaxOutputTokens;
@@ -70,7 +75,12 @@ function inputBudgetTokens(
     return undefined;
   }
 
-  return Math.max(0, Math.floor(contextWindow) - Math.floor(maxOutputTokens));
+  return Math.max(
+    0,
+    Math.floor(contextWindow) -
+      Math.floor(maxOutputTokens) -
+      MODEL_REQUEST_SAFETY_MARGIN_TOKENS,
+  );
 }
 
 function positiveFlooredTokens(value: number | undefined): number | undefined {

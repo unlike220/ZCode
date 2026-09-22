@@ -112,6 +112,20 @@ export function classifyModelFailure(
     };
   }
 
+  if (code === ModelErrorCode.ModelContextBudgetExceeded) {
+    return {
+      code: ModelErrorCode.ModelContextBudgetExceeded,
+      message:
+        unwrapped instanceof Error
+          ? unwrapped.message
+          : "Model request exceeds the local context budget.",
+      reason: ModelFailureReasonValue.LocalContextBudgetExceeded,
+      retryReason: ModelRetryReasonValue.NetworkError,
+      retryable: false,
+      statusCode,
+    };
+  }
+
   if (isAbortFailure(unwrapped, abortSignal)) {
     return {
       code: ModelErrorCode.ModelRequestCancelled,

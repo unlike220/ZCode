@@ -22,6 +22,7 @@ export const CoreErrorType = {
   ModelError: "model_error",
   ModelTimeout: "model_timeout",
   ModelRateLimited: "model_rate_limited",
+  ModelContextBudgetExceeded: "model_context_budget_exceeded",
   ModelContextExceeded: "model_context_exceeded",
 
   // Tool errors

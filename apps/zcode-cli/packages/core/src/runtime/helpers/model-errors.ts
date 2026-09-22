@@ -216,6 +216,44 @@ const MODEL_MEDIA_TOO_LARGE_MARKERS = new Set<string>([
   "document_too_large",
 ]);
 
+const MODEL_CONTEXT_BUDGET_EXCEEDED_MARKERS = new Set<string>([
+  CoreErrorType.ModelContextBudgetExceeded,
+  ModelErrorCode.ModelContextBudgetExceeded,
+]);
+
+export function isModelContextBudgetExceededError(error: unknown): boolean {
+  let current = error;
+  const seen = new WeakSet<object>();
+
+  for (let depth = 0; depth <= 6; depth += 1) {
+    if (current === undefined || current === null) return false;
+    if (typeof current !== "object") return false;
+    if (seen.has(current)) return false;
+    seen.add(current);
+
+    const record = current as Record<string, unknown>;
+    if (
+      isModelContextBudgetExceededMarker(stringProperty(record, "type")) ||
+      isModelContextBudgetExceededMarker(stringProperty(record, "code"))
+    ) {
+      return true;
+    }
+
+    const context = isPlainRecord(record.context) ? record.context : undefined;
+    if (
+      context &&
+      (isModelContextBudgetExceededMarker(stringProperty(context, "type")) ||
+        isModelContextBudgetExceededMarker(stringProperty(context, "code")))
+    ) {
+      return true;
+    }
+
+    current = record.cause ?? record.lastError ?? record.error;
+  }
+
+  return false;
+}
+
 export function isModelContextExceededError(error: unknown): boolean {
   let current = error;
   const seen = new WeakSet<object>();
@@ -231,6 +269,12 @@ export function isModelContextExceededError(error: unknown): boolean {
     }
 
     const record = current as Record<string, unknown>;
+    if (
+      isModelContextBudgetExceededMarker(stringProperty(record, "type")) ||
+      isModelContextBudgetExceededMarker(stringProperty(record, "code"))
+    ) {
+      return false;
+    }
     if (
       isModelContextExceededMarker(stringProperty(record, "type")) ||
       isModelContextExceededMarker(stringProperty(record, "code")) ||
@@ -259,6 +303,13 @@ export function isModelContextExceededError(error: unknown): boolean {
 
 function isModelContextExceededMarker(value: string | undefined): boolean {
   return value !== undefined && MODEL_CONTEXT_EXCEEDED_MARKERS.has(value.trim().toLowerCase());
+}
+
+function isModelContextBudgetExceededMarker(value: string | undefined): boolean {
+  return (
+    value !== undefined &&
+    MODEL_CONTEXT_BUDGET_EXCEEDED_MARKERS.has(value.trim().toLowerCase())
+  );
 }
 
 export function isModelMediaTooLargeError(error: unknown): boolean {

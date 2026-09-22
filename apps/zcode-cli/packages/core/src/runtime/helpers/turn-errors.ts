@@ -13,7 +13,10 @@ import {
   projectExecutionErrorPayload,
   withErrorPayloadRole,
 } from "../../errors/error-payload.js";
-import { isModelContextExceededError } from "./model-errors.js";
+import {
+  isModelContextBudgetExceededError,
+  isModelContextExceededError,
+} from "./model-errors.js";
 
 export { projectExecutionErrorPayload } from "../../errors/error-payload.js";
 
@@ -99,6 +102,21 @@ export function createTurnFailureError(
   }
   if (isTurnCancellationError(error, abortSignal)) {
     return createTurnCancelledError(error);
+  }
+
+  if (isModelContextBudgetExceededError(error)) {
+    const record = error && typeof error === "object" ? (error as Record<string, unknown>) : {};
+    const context = record.context;
+    return createCoreError(
+      CoreErrorType.ModelContextBudgetExceeded,
+      error instanceof Error ? error.message : "Model request exceeds the local context budget.",
+      {
+        cause: error instanceof Error ? error : undefined,
+        context: context && typeof context === "object" ? (context as Record<string, unknown>) : {},
+        recoverable: false,
+        retryable: false,
+      },
+    );
   }
 
   if (

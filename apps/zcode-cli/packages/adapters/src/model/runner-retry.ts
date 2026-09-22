@@ -211,6 +211,7 @@ function modelFailureSource(
   // 只按 reason 归因会把尚未发出网络请求的错误也记到 provider。缺少上游证据时归 runtime。
   if (
     reason === ModelFailureReason.InvalidRequest ||
+    reason === ModelFailureReason.LocalContextBudgetExceeded ||
     reason === ModelFailureReason.ProviderNotConfigured ||
     reason === ModelFailureReason.Unknown
   ) {
