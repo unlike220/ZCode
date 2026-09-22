@@ -202,18 +202,22 @@ export function evaluateProjectCompletion(
         };
       }
       case "task_evidence": {
+        const evidenceSource = criterion.evidenceSource ?? "any";
         const matching = projectState.evidence.filter(
           (evidence) =>
             evidence.subjectType === "task" &&
             evidence.subjectId === contract.taskId &&
-            criterion.evidenceKinds.includes(evidence.kind),
+            criterion.evidenceKinds.includes(evidence.kind) &&
+            (evidenceSource === "any" ||
+              (evidence.provenance?.source === "automatic_tool" &&
+                evidence.provenance.outcome === "success")),
         );
         const passed = matching.length >= criterion.minimumCount;
         return {
           id: criterion.id,
           kind: criterion.kind,
           status: passed ? ("pass" as const) : ("fail" as const),
-          summary: `Task evidence ${matching.length}/${criterion.minimumCount} matching kinds: ${criterion.evidenceKinds.join(", ")}`,
+          summary: `Task evidence ${matching.length}/${criterion.minimumCount} matching kinds: ${criterion.evidenceKinds.join(", ")}; source: ${evidenceSource}`,
         };
       }
       case "no_open_project_work": {

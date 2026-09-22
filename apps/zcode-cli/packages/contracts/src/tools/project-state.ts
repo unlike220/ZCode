@@ -40,6 +40,7 @@ export const ProjectEvidenceSubjectTypeSchema = z.enum([
 export type ProjectEvidenceSubjectType = z.infer<typeof ProjectEvidenceSubjectTypeSchema>;
 
 const ProjectRecordIdSchema = z.string().trim().min(1).max(120);
+const ProjectToolCallIdSchema = z.string().trim().min(1).max(200);
 const ProjectRecordTitleSchema = z.string().trim().min(1).max(500);
 const ProjectTextSchema = z.string().trim().min(1).max(20_000);
 const ProjectTagsSchema = z.array(z.string().trim().min(1).max(120)).max(50).default([]);
@@ -86,6 +87,32 @@ export const ProjectUnknownSchema = z
   .strict();
 export type ProjectUnknown = z.infer<typeof ProjectUnknownSchema>;
 
+export const ProjectEvidenceAutomaticToolProvenanceSchema = z
+  .object({
+    source: z.literal("automatic_tool"),
+    toolName: ProjectRecordIdSchema,
+    toolCallId: ProjectToolCallIdSchema,
+    traceId: ProjectToolCallIdSchema.optional(),
+    outcome: z.literal("success"),
+    command: z
+      .object({
+        category: z.enum(["test", "git", "build", "package", "network", "search", "other"]),
+        safeName: z.string().trim().min(1).max(128).optional(),
+        hash: z
+          .string()
+          .regex(/^[a-f0-9]{16}$/u)
+          .optional(),
+        exitCode: z.number().int().optional(),
+        status: z.literal("completed"),
+      })
+      .strict()
+      .optional(),
+  })
+  .strict();
+export type ProjectEvidenceAutomaticToolProvenance = z.infer<
+  typeof ProjectEvidenceAutomaticToolProvenanceSchema
+>;
+
 const ProjectEvidenceBaseSchema = z
   .object({
     id: ProjectRecordIdSchema,
@@ -95,6 +122,7 @@ const ProjectEvidenceBaseSchema = z
     reference: ProjectTextSchema,
     summary: z.string().trim().max(20_000).optional(),
     observedAt: z.string().min(1),
+    provenance: ProjectEvidenceAutomaticToolProvenanceSchema.optional(),
   })
   .strict();
 
@@ -134,6 +162,7 @@ const ProjectDecisionMutationSchema = ProjectDecisionSchema.omit({ updatedAt: tr
 const ProjectUnknownMutationSchema = ProjectUnknownSchema.omit({ updatedAt: true });
 const ProjectEvidenceMutationSchema = ProjectEvidenceBaseSchema.omit({
   observedAt: true,
+  provenance: true,
 }).superRefine((value, context) => {
   if (value.subjectType === "repository" && value.subjectId !== undefined) {
     context.addIssue({

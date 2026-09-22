@@ -1,4 +1,5 @@
 export {
+  applyAutomaticProjectEvidence,
   applyProjectStateUpdate,
   createEmptyProjectIntelligenceState,
   readProjectIntelligenceState,

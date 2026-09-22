@@ -63,6 +63,7 @@ import {
   recordSuccessfulProjectWorkMutation,
   type ProjectWorkMutationGuard,
 } from "./project-work.js";
+import { recordAutomaticProjectEvidence } from "./automatic-evidence.js";
 import { validateInitialModelToolInput, validateInput, validateOutput } from "./validation.js";
 import type { ExecutableToolCall } from "../types.js";
 import { resolveEmbeddedSearchBranchCapability } from "../../embedded-search/capability.js";
@@ -587,6 +588,17 @@ async function executeToolCallImpl(
       display,
       perf,
       skillTelemetryMetadata,
+    );
+
+    // Completion evidence points back to the emitted ToolCallResult observation. Capture
+    // only after command execution, serialization, hooks, validation, and event publication succeeded.
+    await recordAutomaticProjectEvidence(
+      deps,
+      entry,
+      canonicalToolCall.id,
+      executionInput,
+      output,
+      traceContext,
     );
 
     await backgroundTasks.trackBackgroundTask(canonicalToolCall, output, traceContext, turnId);

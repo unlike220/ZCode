@@ -313,7 +313,7 @@ test("completion context is bounded, task-focused, and degrades safely on corrup
   });
   assert.match(context!, /Completion Contract/);
   assert.match(context!, /NOT READY/);
-  assert.match(context!, /evidence presence/i);
+  assert.match(context!, /source=automatic/i);
   assert.ok(context!.length <= 1600);
 
   await writeFile(join(rootDir, "completion-contracts.json"), "broken");

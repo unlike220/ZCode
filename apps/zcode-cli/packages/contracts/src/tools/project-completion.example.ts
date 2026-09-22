@@ -16,6 +16,7 @@ export const projectCompletionContractExample = {
         kind: "task_evidence",
         evidenceKinds: ["test"],
         minimumCount: 1,
+        evidenceSource: "automatic",
       },
     ],
   },

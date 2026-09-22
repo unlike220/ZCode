@@ -69,7 +69,7 @@ export async function buildProjectCompletionTurnContext(input: {
   const lines = [
     "# Completion Contract",
     `Task ${contract.taskId}: ${evaluation.status === "ready" ? "READY" : "NOT READY"}`,
-    "This is a point-in-time engine evaluation. task_evidence criteria currently verify structured evidence presence/linkage; automatic execution provenance is deferred to the Evidence Capture phase.",
+    "This is a point-in-time engine evaluation. task_evidence source=automatic requires engine-authored successful tool provenance; source=any may also count manual evidence.",
   ];
   for (const criterion of evaluation.criteria.slice(0, MAX_CONTEXT_CRITERIA)) {
     lines.push(

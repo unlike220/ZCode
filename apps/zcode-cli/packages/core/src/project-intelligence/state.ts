@@ -12,6 +12,7 @@ import {
 import { resolveProjectIntelligenceStatePath } from "./path.js";
 
 const PROJECT_STATE_MAX_BYTES = 1024 * 1024;
+export const PROJECT_AUTOMATIC_EVIDENCE_MAX_PER_TASK = 100 as const;
 
 export interface ProjectIntelligenceReadResult {
   exists: boolean;
@@ -75,9 +76,18 @@ export async function writeProjectIntelligenceState(
   } = {},
 ): Promise<void> {
   const path = resolveProjectIntelligenceStatePath(rootDir);
+  const validated = ProjectIntelligenceStateSchema.parse(state);
+  assertUniqueIds(validated);
+  const content = `${JSON.stringify(validated, null, 2)}\n`;
+  const bytes = Buffer.byteLength(content, "utf8");
+  if (bytes > PROJECT_STATE_MAX_BYTES) {
+    throw new Error(
+      `Project Intelligence state would exceed ${PROJECT_STATE_MAX_BYTES} bytes (${bytes})`,
+    );
+  }
   await fileSystemPort.writeTextFile({
     path,
-    content: `${JSON.stringify(state, null, 2)}\n`,
+    content,
     createParents: true,
     atomic: true,
     expectedRevision: options.expectedRevision,
@@ -125,6 +135,12 @@ export function applyProjectStateUpdate(
       }
       case "upsert_evidence": {
         assertEvidenceSubjectExists(next, input.evidence);
+        const existing = next.evidence.find((item) => item.id === input.evidence.id);
+        if (existing?.provenance?.source === "automatic_tool") {
+          throw new Error(
+            `Project Intelligence evidence ${input.evidence.id} is engine-authored automatic evidence and cannot be overwritten through ProjectStateUpdate`,
+          );
+        }
         const result = upsertById(next.evidence, { ...input.evidence, observedAt: now });
         next.evidence = result.items;
         return { recordId: input.evidence.id, created: result.created };
@@ -145,6 +161,53 @@ export function applyProjectStateUpdate(
       created: mutation.created,
     },
   };
+}
+
+export function applyAutomaticProjectEvidence(
+  state: ProjectIntelligenceState,
+  evidence: ProjectEvidence,
+  now = new Date().toISOString(),
+): { state: ProjectIntelligenceState; changed: boolean } {
+  if (evidence.provenance?.source !== "automatic_tool") {
+    throw new Error("Automatic Project Evidence requires automatic_tool provenance");
+  }
+  if (evidence.subjectType !== "task" || !evidence.subjectId) {
+    throw new Error("Automatic Project Evidence currently requires a task subject");
+  }
+  assertEvidenceSubjectExists(state, evidence);
+
+  const existing = state.evidence.find((item) => item.id === evidence.id);
+  if (existing) {
+    if (
+      existing.provenance?.source === "automatic_tool" &&
+      existing.provenance.toolCallId === evidence.provenance.toolCallId
+    ) {
+      return { state, changed: false };
+    }
+    throw new Error(`Automatic Project Evidence id collision: ${evidence.id}`);
+  }
+
+  const sameTaskAutomatic = state.evidence
+    .filter(
+      (item) =>
+        item.subjectType === "task" &&
+        item.subjectId === evidence.subjectId &&
+        item.provenance?.source === "automatic_tool",
+    )
+    .sort((left, right) => left.observedAt.localeCompare(right.observedAt));
+  const pruneCount = Math.max(
+    0,
+    sameTaskAutomatic.length - PROJECT_AUTOMATIC_EVIDENCE_MAX_PER_TASK + 1,
+  );
+  const prunedIds = new Set(sameTaskAutomatic.slice(0, pruneCount).map((item) => item.id));
+  const next = ProjectIntelligenceStateSchema.parse({
+    ...state,
+    version: state.version + 1,
+    updatedAt: now,
+    evidence: [...state.evidence.filter((item) => !prunedIds.has(item.id)), evidence],
+  });
+  assertUniqueIds(next);
+  return { state: next, changed: true };
 }
 
 function parseProjectIntelligenceState(content: string, path: string): ProjectIntelligenceState {

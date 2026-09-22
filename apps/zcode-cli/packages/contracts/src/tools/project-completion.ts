@@ -45,6 +45,7 @@ export const ProjectCompletionCriterionSchema = z.discriminatedUnion("kind", [
       kind: z.literal("task_evidence"),
       evidenceKinds: EvidenceKindsSchema,
       minimumCount: z.number().int().min(1).max(100),
+      evidenceSource: z.enum(["any", "automatic"]).optional(),
     })
     .strict(),
   z
