@@ -42,6 +42,7 @@ export async function verifyActiveTargetCompletionForContinuation(
   this: AgentRuntimeInternal,
   input: {
     abortSignal?: AbortSignal;
+    allowTargetCompletion?: boolean;
     target: SessionGoal;
     traceContext: TraceContext;
   },
@@ -59,7 +60,12 @@ export async function verifyActiveTargetCompletionForContinuation(
       traceContext: input.traceContext,
     });
 
-    if (!verification.passed) {
+    if (
+      !shouldApplyTargetCompletionVerification({
+        allowTargetCompletion: input.allowTargetCompletion,
+        passed: verification.passed,
+      })
+    ) {
       return {
         target: input.target,
         verification,
@@ -86,6 +92,13 @@ export async function verifyActiveTargetCompletionForContinuation(
     };
   };
   return runTargetCompletionVerificationWithTelemetry(this, input, execute);
+}
+
+export function shouldApplyTargetCompletionVerification(input: {
+  allowTargetCompletion?: boolean;
+  passed: boolean;
+}): boolean {
+  return input.passed && input.allowTargetCompletion !== false;
 }
 
 async function verifyTargetCompletion(

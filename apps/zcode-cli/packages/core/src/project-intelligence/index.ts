@@ -35,3 +35,12 @@ export {
 } from "./work-state.js";
 export { isProjectWorkPathAllowed, resolveProjectWorkMutationPath } from "./work-scope.js";
 export { resolveProjectIntelligenceRoot, resolveProjectIntelligenceStatePath } from "./path.js";
+export {
+  assessProjectIntelligenceContinuation,
+  PROJECT_INTELLIGENCE_STAGNATION_THRESHOLD,
+  updateProjectIntelligenceProgress,
+  type ProjectIntelligenceContinuationAssessment,
+  type ProjectIntelligenceContinuationStopReason,
+  type ProjectIntelligenceProgressState,
+  type ProjectIntelligenceProgressUpdate,
+} from "./autonomous-loop.js";

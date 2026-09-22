@@ -56,6 +56,7 @@ import type { AgentRuntimeHookMethods } from "./internal-hook-methods.js";
 import type { ProjectMemoryExtractionScheduler } from "./helpers/project-memory-extraction.js";
 import type { RuntimeTelemetryFacade } from "../telemetry/runtime-telemetry.js";
 import type { WorkspaceHookRuntimeAdmissionPort } from "../hooks/workspace-hook-runtime-admission.js";
+import type { ProjectIntelligenceProgressState } from "../project-intelligence/autonomous-loop.js";
 
 export interface AgentRuntimeInternal
   extends AgentRuntimeCoreMethods, AgentRuntimeTurnMethods, AgentRuntimeHookMethods {
@@ -126,6 +127,7 @@ export interface AgentRuntimeInternal
   lastEmittedLocalDate?: string;
   autoCompactConsecutiveFailures: number;
   runtimeCommandQueue: RuntimeCommandQueue;
+  projectIntelligenceContinuationProgress: Map<string, ProjectIntelligenceProgressState>;
   runtimeCommandDrainActive: boolean;
   activeForegroundExecution?: ActiveForegroundExecutionState;
   foregroundPromotionLease?: ForegroundPromotionLeaseState;

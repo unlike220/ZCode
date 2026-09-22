@@ -1038,11 +1038,17 @@ export type TargetChangedAction =
 
 export type TargetChangedSource = "command" | "tool" | "runtime";
 
+export type TargetContinuationStopReason =
+  | "project_completion_ready"
+  | "project_continuation_stagnated"
+  | "project_intelligence_state_corrupt";
+
 export interface TargetChangedPayload {
   action: TargetChangedAction;
   source: TargetChangedSource;
   target: SessionGoal | null;
   previousTarget?: SessionGoal | null;
+  continuationStopReason?: TargetContinuationStopReason;
 }
 
 // -----------------------------------------------

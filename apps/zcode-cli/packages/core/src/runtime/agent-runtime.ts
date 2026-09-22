@@ -127,6 +127,7 @@ import { RuntimeTelemetryFacade } from "../telemetry/runtime-telemetry.js";
 import type { WorkspaceHookRuntimeAdmissionPort } from "../hooks/workspace-hook-runtime-admission.js";
 import { disposeNodeReplSession } from "../tool/handlers/node-repl.js";
 import { cloneModelSelection } from "./model-selection.js";
+import type { ProjectIntelligenceProgressState } from "../project-intelligence/autonomous-loop.js";
 
 // oxlint-disable typescript-eslint/no-unsafe-declaration-merging
 export class AgentRuntime {
@@ -202,6 +203,10 @@ export class AgentRuntime {
   private lastEmittedLocalDate?: string;
   private autoCompactConsecutiveFailures = 0;
   private runtimeCommandQueue: RuntimeCommandQueue;
+  private projectIntelligenceContinuationProgress = new Map<
+    string,
+    ProjectIntelligenceProgressState
+  >();
   private runtimeCommandDrainActive = false;
   private activeForegroundExecution?: ActiveForegroundExecutionState;
   /** sendQueuedNow 的 Core 调度权；只活在当前进程，匹配 runtime command 出队即消费。 */

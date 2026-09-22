@@ -20,7 +20,14 @@ import type {
   TargetContinuationRuntimeCommandOptions,
 } from "../command-queue.js";
 import { hasRunningBackgroundRuntimeTask } from "../../runtime-task/registry.js";
+import {
+  assessProjectIntelligenceContinuation,
+  updateProjectIntelligenceProgress,
+  type ProjectIntelligenceContinuationAssessment,
+  type ProjectIntelligenceContinuationStopReason,
+} from "../../project-intelligence/autonomous-loop.js";
 import { wrapSystemReminderForSource } from "../../system-reminder/source.js";
+import { resolveRuntimeProjectIntelligenceRoot } from "../helpers/project-intelligence.js";
 import { verifyActiveTargetCompletionForContinuation } from "./target-completion-verification.js";
 import { enqueueCancellableRuntimeCommand } from "./runtime-command-submit.js";
 
@@ -29,6 +36,9 @@ export async function recordTargetChanged(
   input: TargetChangedPayload & { traceContext: TraceContext },
 ): Promise<void> {
   const { traceContext, ...payload } = input;
+  if (payload.target?.status === "active" && payload.previousTarget?.status !== "active") {
+    this.projectIntelligenceContinuationProgress.delete(payload.target.targetID);
+  }
   const event = this.createEvent(SessionEventType.TargetChanged, payload, traceContext);
   await this.appendEvent(event, traceContext);
 }
@@ -82,6 +92,25 @@ export async function executeTargetContinuationCommand(
   const target = await targetContinuationCandidateForCommand.call(this, traceContext);
   if (!target) return null;
 
+  const initialProjectDecision = await readProjectIntelligenceContinuationDecision.call(
+    this,
+    traceContext,
+  );
+  if (initialProjectDecision?.kind === "blocked") {
+    await stopTargetForProjectIntelligence.call(this, target, initialProjectDecision, traceContext);
+    return null;
+  }
+  if (initialProjectDecision?.kind === "governed" && initialProjectDecision.status === "ready") {
+    await stopTargetForProjectIntelligence.call(
+      this,
+      target,
+      { kind: "ready", reason: "project_completion_ready" },
+      traceContext,
+    );
+    return null;
+  }
+  const governedProjectTask = initialProjectDecision?.kind === "governed";
+
   if (
     options.verifyBeforeContinue === true &&
     (await hasRunningBackgroundTaskForGoalContinuation.call(this))
@@ -96,14 +125,15 @@ export async function executeTargetContinuationCommand(
     return null;
   }
 
-  const verificationResult = options.verifyBeforeContinue
+  let verificationResult = options.verifyBeforeContinue
     ? await verifyActiveTargetCompletionForContinuation.call(this, {
         abortSignal: options.abortSignal,
+        allowTargetCompletion: !governedProjectTask,
         target,
         traceContext,
       })
     : null;
-  if (verificationResult?.verification.passed) {
+  if (verificationResult?.verification.passed && !governedProjectTask) {
     this.logger?.info("Goal continuation skipped after completion verifier passed", {
       ...traceContextToLogContext(traceContext),
       event: "target.continuation.skipped_complete",
@@ -115,7 +145,11 @@ export async function executeTargetContinuationCommand(
   }
   // 没有 nextAction 的失败结果来自 verifier 自身失败或无效输出，
   // 不是模型确认的下一步工作；继续自动续跑会把内部错误变成无限目标迭代。
-  if (verificationResult && !verificationResult.verification.nextAction?.trim()) {
+  if (
+    verificationResult &&
+    !governedProjectTask &&
+    !verificationResult.verification.nextAction?.trim()
+  ) {
     this.logger?.warn("Goal continuation skipped after verifier failed without next action", {
       ...traceContextToLogContext(traceContext),
       event: "target.continuation.skipped_no_next_action",
@@ -125,6 +159,67 @@ export async function executeTargetContinuationCommand(
     });
     return null;
   }
+
+  const projectDecisionAtBoundary = governedProjectTask
+    ? options.verifyBeforeContinue
+      ? await readProjectIntelligenceContinuationDecision.call(this, traceContext)
+      : initialProjectDecision
+    : undefined;
+  if (projectDecisionAtBoundary?.kind === "blocked") {
+    await stopTargetForProjectIntelligence.call(
+      this,
+      target,
+      projectDecisionAtBoundary,
+      traceContext,
+    );
+    return null;
+  }
+  if (projectDecisionAtBoundary?.kind === "governed") {
+    if (projectDecisionAtBoundary.status === "ready") {
+      await stopTargetForProjectIntelligence.call(
+        this,
+        target,
+        { kind: "ready", reason: "project_completion_ready" },
+        traceContext,
+      );
+      return null;
+    }
+
+    const progress = updateProjectIntelligenceProgress(
+      this.projectIntelligenceContinuationProgress.get(target.targetID),
+      projectDecisionAtBoundary.fingerprint,
+    );
+    this.projectIntelligenceContinuationProgress.set(target.targetID, progress.state);
+    if (progress.stagnated) {
+      await stopTargetForProjectIntelligence.call(
+        this,
+        target,
+        {
+          kind: "stagnated",
+          reason: "project_continuation_stagnated",
+          noProgressCount: progress.state.noProgressCount,
+        },
+        traceContext,
+      );
+      return null;
+    }
+
+    if (
+      verificationResult?.verification.passed ||
+      !verificationResult?.verification.nextAction?.trim()
+    ) {
+      verificationResult = {
+        target,
+        verification: {
+          passed: false,
+          reason: `Project task ${projectDecisionAtBoundary.taskId} completion contract is not ready.`,
+          nextAction:
+            "Continue working toward the linked Project Intelligence task until its Completion Contract is ready.",
+        },
+      };
+    }
+  }
+
   const latestTarget = await this.readSessionTargetForContext(traceContext);
   // 目标校验请求可能在用户点击 Stop 后才返回；队列会保持 stopRequested，
   // 但 verifier 拿到的是校验开始前的 active target。这里必须重读目标状态，避免用旧对象继续续跑。
@@ -176,6 +271,78 @@ export async function executeTargetContinuationCommand(
     targetId: continuationTarget.targetID,
     traceContext: continuationTrace,
   });
+}
+
+async function readProjectIntelligenceContinuationDecision(
+  this: AgentRuntimeInternal,
+  traceContext: TraceContext,
+): Promise<ProjectIntelligenceContinuationAssessment | null> {
+  if (!this.fileSystemPort) return null;
+  const rootDir = resolveRuntimeProjectIntelligenceRoot(this.config, this.workspaceRoot);
+  if (!rootDir) return null;
+  return await assessProjectIntelligenceContinuation({
+    fileSystemPort: this.fileSystemPort,
+    rootDir,
+    traceContext,
+  });
+}
+
+async function stopTargetForProjectIntelligence(
+  this: AgentRuntimeInternal,
+  target: SessionGoal,
+  decision:
+    | { kind: "ready"; reason: "project_completion_ready" }
+    | {
+        kind: "blocked";
+        reason: ProjectIntelligenceContinuationStopReason;
+        detail: string;
+      }
+    | {
+        kind: "stagnated";
+        reason: "project_continuation_stagnated";
+        noProgressCount: number;
+      },
+  traceContext: TraceContext,
+): Promise<void> {
+  const latestTarget = await this.readSessionTargetForContext(traceContext);
+  if (
+    !latestTarget ||
+    latestTarget.status !== "active" ||
+    latestTarget.targetID !== target.targetID
+  ) {
+    return;
+  }
+  const nextStatus = decision.kind === "ready" ? "complete" : "paused";
+  const updatedTarget = await this.sessionStore?.updateTargetStatus({
+    sessionID: this.sessionId,
+    status: nextStatus,
+  });
+  if (!updatedTarget) return;
+  this.projectIntelligenceContinuationProgress.delete(target.targetID);
+
+  await this.recordTargetChanged({
+    action: "status_updated",
+    continuationStopReason: decision.reason,
+    previousTarget: latestTarget,
+    source: "runtime",
+    target: updatedTarget,
+    traceContext,
+  });
+  const logContext = {
+    ...traceContextToLogContext(traceContext),
+    event: "target.continuation.project_intelligence_stopped",
+    module: "core.runtime",
+    reason: decision.reason,
+    status: decision.kind === "ready" ? ("completed" as const) : ("waiting" as const),
+    targetId: target.targetID,
+    ...(decision.kind === "blocked" ? { detail: decision.detail } : {}),
+    ...(decision.kind === "stagnated" ? { noProgressCount: decision.noProgressCount } : {}),
+  };
+  if (decision.kind === "ready") {
+    this.logger?.info("Goal continuation stopped by Project Intelligence completion", logContext);
+  } else {
+    this.logger?.warn("Goal continuation stopped by Project Intelligence safety gate", logContext);
+  }
 }
 
 export async function targetContinuationCandidate(
