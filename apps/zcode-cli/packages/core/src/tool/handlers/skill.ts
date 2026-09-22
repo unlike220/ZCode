@@ -11,6 +11,7 @@ import {
   createCoreError,
   type SkillRuntimeInput,
 } from "@zcode/contracts";
+import { FACADE_DTS, SNIPPET_FACADE_DTS } from "@zcode/dynamic-workflow";
 import type { ToolEntry, ToolHandler } from "../types.js";
 
 const MAX_SKILL_BYTES = 100_000;
@@ -55,11 +56,13 @@ const skillHandler: ToolHandler = async (input, context) => {
     source: loaded.metadata.source,
   });
 
+  const content = appendDynamicWorkflowReference(skill, loaded.content);
+
   return [
     `<skill_content name="${loaded.metadata.name}">`,
     `# Skill: ${loaded.metadata.name}`,
     "",
-    expandSkillContextVariables(loaded.content, loaded.baseDirectory),
+    expandSkillContextVariables(content, loaded.baseDirectory),
     "",
     `Base directory for this skill: ${loaded.baseDirectory}`,
     "Relative paths in this skill are relative to this base directory.",
@@ -73,6 +76,45 @@ const skillHandler: ToolHandler = async (input, context) => {
 function expandSkillContextVariables(content: string, baseDirectory: string): string {
   // 只有 Skill 工具加载后才有明确的当前 skill 目录，因此变量替换限定在这里完成。
   return content.replace(/\$\{(CLAUDE_SKILL_DIR|ZCODE_SKILL_DIR)\}/gu, baseDirectory);
+}
+
+/**
+ * Dynamic Workflow 的长 facade 是创作参考，不是每轮工具 contract。
+ *
+ * Skill 是现有的按需读取边界；只有模型显式加载该 skill 时才把编译器实际使用的声明附上。
+ * 这样 Create/Save/Eval 的 provider 描述可以保持短小，同时不会让 skill metadata 或系统提示
+ * 变成长 facade 的第二个常驻副本。qualified name 可能带 plugin 前缀，统一按末段识别。
+ */
+export function appendDynamicWorkflowReference(skillName: string, content: string): string {
+  if (!isDynamicWorkflowSkillName(skillName)) return content;
+
+  return [
+    "The provider-visible workflow tool descriptions are intentionally concise. Use the exact compiler reference appended below when authoring code; it is the authoritative API surface for this session.",
+    "",
+    content,
+    "",
+    "## Dynamic Workflow compiler reference (loaded on demand)",
+    "The declarations below are the exact ambient facade used by CreateWorkflow and SaveWorkflow.",
+    "Use the snippet subset for EvalWorkflowSnippet. Do not copy `declare` statements into a script.",
+    "",
+    "### Full workflow facade",
+    "```ts",
+    FACADE_DTS.trim(),
+    "```",
+    "",
+    "### Snippet facade",
+    "```ts",
+    SNIPPET_FACADE_DTS.trim(),
+    "```",
+  ].join("\n");
+}
+
+function isDynamicWorkflowSkillName(skillName: string): boolean {
+  return (
+    skillName === "dynamic-workflows" ||
+    skillName.endsWith(":dynamic-workflows") ||
+    skillName.endsWith("/dynamic-workflows")
+  );
 }
 
 export const skillToolEntry: ToolEntry = {
