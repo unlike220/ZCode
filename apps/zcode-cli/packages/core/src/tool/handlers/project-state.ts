@@ -22,6 +22,11 @@ import {
   applyProjectStateUpdate,
   readProjectIntelligenceState,
   selectProjectIntelligenceState,
+  createEmptyProjectWorkState,
+  evaluateProjectCompletion,
+  findProjectCompletionContract,
+  readProjectCompletionState,
+  readProjectWorkState,
   writeProjectIntelligenceState,
 } from "../../project-intelligence/index.js";
 import type { ToolEntry, ToolExecutionContext, ToolHandler } from "../types.js";
@@ -47,6 +52,7 @@ const projectStateUpdateHandler: ToolHandler = async (input, context) => {
     projectIntelligenceRoot,
     context.traceContext,
   );
+  await assertCompletionReadyForDoneTransition(parsed, current.state, context);
   const mutation = applyProjectStateUpdate(current.state, parsed);
   await writeProjectIntelligenceState(fileSystemPort, projectIntelligenceRoot, mutation.state, {
     expectedRevision: current.revision,
@@ -169,6 +175,85 @@ export const projectStateUpdateToolEntry: ToolEntry = {
     recordOutput: "summary",
   },
 };
+
+async function assertCompletionReadyForDoneTransition(
+  input: ProjectStateUpdateInput,
+  state: Awaited<ReturnType<typeof readProjectIntelligenceState>>["state"],
+  context: ToolExecutionContext,
+): Promise<void> {
+  if (input.operation !== "upsert_task" || input.task.status !== "done") return;
+  const existing = state.tasks.find((task) => task.id === input.task.id);
+  if (existing?.status === "done") return;
+
+  const { fileSystemPort, projectIntelligenceRoot } = requireProjectIntelligence(context);
+  let completion;
+  try {
+    completion = await readProjectCompletionState(
+      fileSystemPort,
+      projectIntelligenceRoot,
+      context.traceContext,
+    );
+  } catch (cause) {
+    throw createCoreError(
+      CoreErrorType.ToolExecutionFailed,
+      `Cannot verify Project Completion state for task ${input.task.id}; done transition blocked`,
+      {
+        cause: cause instanceof Error ? cause : undefined,
+        context: {
+          taskId: input.task.id,
+          toolCallId: context.toolCallId,
+          toolName: "ProjectStateUpdate",
+        },
+        recoverable: true,
+      },
+    );
+  }
+  const contract = findProjectCompletionContract(completion.state, input.task.id);
+  if (!contract) return;
+
+  let workState = createEmptyProjectWorkState();
+  if (contract.criteria.some((criterion) => criterion.kind === "no_open_project_work")) {
+    try {
+      workState = (
+        await readProjectWorkState(fileSystemPort, projectIntelligenceRoot, context.traceContext)
+      ).state;
+    } catch (cause) {
+      throw createCoreError(
+        CoreErrorType.ToolExecutionFailed,
+        `Cannot evaluate Project Work criterion for task ${input.task.id}; done transition blocked`,
+        {
+          cause: cause instanceof Error ? cause : undefined,
+          context: {
+            taskId: input.task.id,
+            toolCallId: context.toolCallId,
+            toolName: "ProjectStateUpdate",
+          },
+          recoverable: true,
+        },
+      );
+    }
+  }
+
+  const evaluation = evaluateProjectCompletion(contract, state, workState);
+  if (evaluation.status === "ready") return;
+  const failed = evaluation.criteria
+    .filter((criterion) => criterion.status === "fail")
+    .map((criterion) => criterion.id)
+    .join(", ");
+  throw createCoreError(
+    CoreErrorType.ToolExecutionFailed,
+    `Completion Contract for task ${input.task.id} is not ready${failed ? `; failed criteria: ${failed}` : ""}`,
+    {
+      context: {
+        taskId: input.task.id,
+        failedCriteria: failed,
+        toolCallId: context.toolCallId,
+        toolName: "ProjectStateUpdate",
+      },
+      recoverable: true,
+    },
+  );
+}
 
 function requireProjectIntelligence(context: ToolExecutionContext) {
   if (!context.fileSystemPort || !context.projectIntelligenceRoot) {

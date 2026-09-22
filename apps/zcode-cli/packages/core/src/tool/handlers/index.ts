@@ -38,6 +38,11 @@ import { isSubagentDispatchToolName } from "../compat.js";
 import { skillToolEntry } from "./skill.js";
 import { todoReadToolEntry, todoWriteToolEntry } from "./todo.js";
 import { projectStateReadToolEntry, projectStateUpdateToolEntry } from "./project-state.js";
+import {
+  projectCompletionEvaluateToolEntry,
+  projectCompletionReadToolEntry,
+  projectCompletionUpdateToolEntry,
+} from "./project-completion.js";
 import { projectWorkReadToolEntry, projectWorkUpdateToolEntry } from "./project-work.js";
 import {
   repositoryFactsReadToolEntry,
@@ -93,6 +98,9 @@ export const builtInTools: ToolEntry[] = [
   todoWriteToolEntry,
   projectStateReadToolEntry,
   projectStateUpdateToolEntry,
+  projectCompletionReadToolEntry,
+  projectCompletionUpdateToolEntry,
+  projectCompletionEvaluateToolEntry,
   projectWorkReadToolEntry,
   projectWorkUpdateToolEntry,
   repositoryFactsReadToolEntry,
@@ -236,6 +244,7 @@ export function registerBuiltInTools(
     }
     if (
       (entry.metadata.name === "ProjectStateUpdate" ||
+        entry.metadata.name === "ProjectCompletionUpdate" ||
         entry.metadata.name === "ProjectWorkUpdate" ||
         entry.metadata.name === "RepositoryFactsRefresh") &&
       options.includeProjectStateUpdate !== true

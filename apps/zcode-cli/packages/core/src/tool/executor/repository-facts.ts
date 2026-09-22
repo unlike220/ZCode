@@ -16,9 +16,12 @@ export async function invalidateFactsForTool(
 ): Promise<void> {
   try {
     if (
-      ["RepositoryFactsRefresh", "ProjectStateUpdate", "ProjectWorkUpdate"].includes(
-        entry.metadata.name,
-      ) ||
+      [
+        "RepositoryFactsRefresh",
+        "ProjectStateUpdate",
+        "ProjectWorkUpdate",
+        "ProjectCompletionUpdate",
+      ].includes(entry.metadata.name) ||
       !isWorkspaceMutatingToolCall(resolveToolCallCapabilityFlags(deps, entry, input))
     )
       return;

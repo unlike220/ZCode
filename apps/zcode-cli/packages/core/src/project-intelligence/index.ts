@@ -7,6 +7,21 @@ export {
 } from "./state.js";
 export { selectProjectIntelligenceState } from "./relevance.js";
 export { buildProjectIntelligenceTurnContext } from "./context.js";
+export {
+  buildProjectCompletionTurnContext,
+  buildRelevantProjectCompletionTurnContext,
+} from "./completion-context.js";
+export {
+  applyProjectCompletionUpdate,
+  createEmptyProjectCompletionState,
+  createNotConfiguredCompletionEvaluation,
+  evaluateProjectCompletion,
+  findProjectCompletionContract,
+  readProjectCompletionState,
+  resolveProjectCompletionStatePath,
+  writeProjectCompletionState,
+  type ProjectCompletionReadResult,
+} from "./completion-state.js";
 export { buildProjectWorkTurnContext } from "./work-context.js";
 export {
   applyProjectWorkUpdate,
