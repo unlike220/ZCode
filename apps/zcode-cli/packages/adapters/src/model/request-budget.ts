@@ -12,6 +12,7 @@ const TOOL_INTERNAL_KEYS = new Set([
   "toModelOutput",
   "experimental_toToolResultContent",
   "capability",
+  "admissionPriority",
   "executionMode",
   "providerNative",
   "readOnly",
@@ -58,11 +59,7 @@ export function calculateModelRequestBudget(
 
   const toolEntries = Object.entries(input.tools ?? {});
   const estimatedMessageTokens = estimateSerializedTokens(input.messages);
-  const estimatedToolTokens = toolEntries.reduce(
-    (total, [name, toolDefinition]) =>
-      total + estimateSerializedTokens({ name, ...providerVisibleToolShape(toolDefinition) }),
-    0,
-  );
+  const estimatedToolTokens = estimateProviderVisibleToolsTokens(input.tools);
   const estimatedFramingTokens =
     REQUEST_FRAMING_TOKENS +
     input.messages.length * MESSAGE_FRAMING_TOKENS +
@@ -117,6 +114,14 @@ export function assertModelRequestBudget(input: {
         toolCount: budget.toolCount,
       },
     },
+  );
+}
+
+export function estimateProviderVisibleToolsTokens(tools?: Record<string, unknown>): number {
+  return Object.entries(tools ?? {}).reduce(
+    (total, [name, toolDefinition]) =>
+      total + estimateSerializedTokens({ name, ...providerVisibleToolShape(toolDefinition) }),
+    0,
   );
 }
 

@@ -11,6 +11,7 @@ import type {
 } from "./runner-runtime.js";
 import { createModelRequestAttributionHeaders, type ModelStatusContext } from "./runner-status.js";
 import { assertModelRequestBudget, calculateModelRequestBudget } from "./request-budget.js";
+import { admitProviderFacingTools } from "./tool-admission.js";
 
 type ExperimentalIncludeWithResponseBody = {
   requestBody?: boolean;
@@ -56,20 +57,15 @@ export function createGenerateTextOptions(input: {
     responseJsonSchema: input.request.responseJsonSchema,
     resolved: input.resolved,
   });
+  const providerFacing = createProviderFacingMessagesAndTools({
+    providerOptions,
+    request: input.request,
+    resolved: input.resolved,
+  });
   const options = removeUndefined({
     model: input.resolved.model,
-    messages: toAiSdkMessages(input.request.messages, {
-      apiFormat: resolveProviderApiFormat(providerOptions),
-      providerOptions,
-      providerKind: input.resolved.providerKind,
-      inputFormat: input.resolved.properties?.inputFormat,
-    }),
-    tools: toAiSdkTools(input.request.tools, {
-      providerKind: input.resolved.providerKind,
-      modelId: input.resolved.modelId,
-      requiresMfjsToolSchema: input.resolved.properties.requiresMfjsToolSchema,
-      supportsNativeWebSearch: input.resolved.properties.supportsNativeWebSearch,
-    }),
+    messages: providerFacing.messages,
+    tools: providerFacing.tools,
     toolChoice: toAiSdkToolChoice(input.request.toolChoice),
     temperature: input.request.temperature,
     topP: input.request.topP,
@@ -119,20 +115,15 @@ export function createStreamTextOptions(input: {
     providerKind: input.resolved.providerKind,
     providerOptions,
   });
+  const providerFacing = createProviderFacingMessagesAndTools({
+    providerOptions,
+    request: input.request,
+    resolved: input.resolved,
+  });
   const options = removeUndefined({
     model: input.resolved.model,
-    messages: toAiSdkMessages(input.request.messages, {
-      apiFormat: resolveProviderApiFormat(providerOptions),
-      providerOptions,
-      providerKind: input.resolved.providerKind,
-      inputFormat: input.resolved.properties?.inputFormat,
-    }),
-    tools: toAiSdkTools(input.request.tools, {
-      providerKind: input.resolved.providerKind,
-      modelId: input.resolved.modelId,
-      requiresMfjsToolSchema: input.resolved.properties.requiresMfjsToolSchema,
-      supportsNativeWebSearch: input.resolved.properties.supportsNativeWebSearch,
-    }),
+    messages: providerFacing.messages,
+    tools: providerFacing.tools,
     toolChoice: toAiSdkToolChoice(input.request.toolChoice),
     temperature: input.request.temperature,
     topP: input.request.topP,
@@ -159,6 +150,34 @@ export function createStreamTextOptions(input: {
   }) as AiSdkStreamTextOptions;
   assertProviderFacingRequestBudget(options, input.request.maxOutputTokens, input.resolved);
   return options;
+}
+
+function createProviderFacingMessagesAndTools(input: {
+  providerOptions?: Record<string, unknown>;
+  request: AiSdkModelTextRequest;
+  resolved: ResolvedAiSdkModel;
+}): Pick<AiSdkGenerateTextOptions, "messages" | "tools"> {
+  const messages = toAiSdkMessages(input.request.messages, {
+    apiFormat: resolveProviderApiFormat(input.providerOptions),
+    providerOptions: input.providerOptions,
+    providerKind: input.resolved.providerKind,
+    inputFormat: input.resolved.properties?.inputFormat,
+  });
+  const candidateTools = toAiSdkTools(input.request.tools, {
+    providerKind: input.resolved.providerKind,
+    modelId: input.resolved.modelId,
+    requiresMfjsToolSchema: input.resolved.properties.requiresMfjsToolSchema,
+    supportsNativeWebSearch: input.resolved.properties.supportsNativeWebSearch,
+  });
+  const admission = admitProviderFacingTools({
+    candidateTools,
+    contextWindow: input.resolved.properties.contextWindow,
+    messages,
+    requestedOutputTokens: input.request.maxOutputTokens,
+    toolChoice: input.request.toolChoice,
+    toolContracts: input.request.tools,
+  });
+  return { messages, tools: admission.tools };
 }
 
 function assertProviderFacingRequestBudget(

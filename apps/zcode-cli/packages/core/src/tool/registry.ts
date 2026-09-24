@@ -3,6 +3,7 @@
 // ============================================================
 
 import { type ModelToolContract } from "@zcode/contracts";
+import { resolveToolAdmissionPriority } from "./admission-priority.js";
 import type { ToolEntry, ToolMetadata } from "./types.js";
 
 // -----------------------------------------------
@@ -108,6 +109,7 @@ export class ToolRegistryImpl implements ToolRegistry {
         name: entry.metadata.name,
         description: toolDescriptionForProvider(entry.metadata),
         capability: entry.capability,
+        admissionPriority: resolveToolAdmissionPriority(entry.metadata),
         executionMode: entry.executionMode,
         providerNative: entry.providerNative,
         inputSchema: entry.inputSchema,

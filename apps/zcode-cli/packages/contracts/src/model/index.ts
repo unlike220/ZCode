@@ -461,10 +461,14 @@ export type ModelToolSideEffectScope =
   | "session"
   | "userInteraction";
 
+export type ModelToolAdmissionPriority = "mandatory" | "high" | "normal" | "optional";
+
 export interface ModelToolContract {
   name: string;
   description?: string;
   capability?: string;
+  /** Runtime-only provider-exposure priority; never serialize as tool schema content. */
+  admissionPriority?: ModelToolAdmissionPriority;
   executionMode?: ToolExecutionMode;
   providerNative?: ProviderNativeToolSpec;
   inputSchema: JsonSchema;

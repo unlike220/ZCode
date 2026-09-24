@@ -1,20 +1,13 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import {
-  ModelErrorCode,
-  ModelFailureReason,
-  ModelRetryBudget,
-} from "@zcode/contracts";
+import { ModelErrorCode, ModelFailureReason, ModelRetryBudget } from "@zcode/contracts";
 import {
   assertModelRequestBudget,
   calculateModelRequestBudget,
 } from "../src/model/request-budget.js";
 import { runGenerateText } from "../src/model/runner-generate.js";
 import { runStreamText } from "../src/model/runner-stream.js";
-import {
-  createGenerateTextOptions,
-  createStreamTextOptions,
-} from "../src/model/runner-options.js";
+import { createGenerateTextOptions, createStreamTextOptions } from "../src/model/runner-options.js";
 import {
   resolveWorkflowModelFailurePolicy,
   retryAllowedByFailurePolicy,
@@ -73,6 +66,7 @@ test("tool-driven overflow is rejected locally before the model runtime", async 
         tools: [
           {
             name: "workflow_catalog",
+            admissionPriority: "mandatory",
             description: "workflow detail ".repeat(25_000),
             inputSchema: { type: "object", properties: { input: { type: "string" } } },
           },
@@ -111,6 +105,7 @@ test("stream overflow is rejected before the stream provider runtime", async () 
       tools: [
         {
           name: "workflow_catalog",
+          admissionPriority: "mandatory",
           description: "workflow detail ".repeat(25_000),
           inputSchema: { type: "object", properties: { input: { type: "string" } } },
         },
@@ -189,10 +184,7 @@ test("unbounded workflow retry stops on a local context-budget failure", () => {
   assert.deepEqual(resolveWorkflowModelFailurePolicy(failure, undefined), {
     decision: "context_exceeded",
   });
-  assert.equal(
-    retryAllowedByFailurePolicy(failure, ModelRetryBudget.Unbounded, undefined),
-    false,
-  );
+  assert.equal(retryAllowedByFailurePolicy(failure, ModelRetryBudget.Unbounded, undefined), false);
 });
 
 test("reserved output and safety margin can reject input below the raw context window", () => {

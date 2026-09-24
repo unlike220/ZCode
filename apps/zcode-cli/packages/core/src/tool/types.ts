@@ -15,6 +15,7 @@ import type {
   PdfDocumentPort,
   ModelMessageContent,
   ModelContentProtection,
+  ModelToolAdmissionPriority,
   Model,
   CoordinatorResponsePort,
   DynamicWorkflowRunPort,
@@ -66,6 +67,8 @@ export interface ToolMetadata {
   name: string;
   description?: string;
   modelInstructions?: readonly string[];
+  /** Request-local provider exposure priority; registration/execution remain unchanged. */
+  admissionPriority?: ModelToolAdmissionPriority;
   allowedInPlanMode?: boolean;
   readOnly: boolean;
   destructive: boolean;
