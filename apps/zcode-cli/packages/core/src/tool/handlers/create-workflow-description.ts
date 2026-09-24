@@ -1,33 +1,33 @@
-import { SAVED_WORKFLOW_PROJECT_DIR, WORKFLOW_DRAFTS_DIR } from "@zcode/contracts";
+// CreateWorkflow 的常驻描述。
+// 工具描述保留用途、调用条件和技能加载要求；facade 声明、写作规则、阶段与命名规则、
+// 字段语义由 `dynamic-workflows` 技能提供。resolveInput 的技能门保证提交脚本前已加载技能。
+// 调用条件必须保留在工具描述里，让模型在加载技能前就能判断是否应使用该工具。
+
+import { DYNAMIC_WORKFLOW_SKILL_NAME } from "@zcode/contracts";
+
+const INTRO =
+  "Create and run a dynamic workflow: a TypeScript script that orchestrates multiple model-driven subagents with plain control flow (loops, conditionals, fan-out) and typed intermediate results. The script is typechecked, the user is asked to confirm it, and the run starts in the background; you are notified with its final result when it settles. Compilation errors come back as diagnostics.";
 
 /**
- * CreateWorkflow 的 provider contract。
- *
- * 编译器 facade 不是每轮都需要的调用契约：完整声明由 dynamic-workflows Skill 在模型明确
- * 请求后按需返回。这里保留会影响一次正确调用的规则，避免把参考手册再次复制进工具 schema。
+ * 只按「用户是否点名」路由：工作流只能由 `/workflow` 或明确请求发起，模型不得自行决定开一条。
  */
-export const CREATE_WORKFLOW_TOOL_DESCRIPTION = [
-  "Create and run a new dynamic workflow: a TypeScript script that orchestrates model-driven subagents with ordinary control flow (loops, conditionals, and fan-out).",
-  "The script is typechecked first. A clean script opens the user's confirmation gate and then starts in the background; the final top-level return value arrives in a completion notification. Compilation errors are returned as diagnostics and nothing runs.",
-  "",
+const WHEN_TO_USE = [
   "When to use:",
-  '- Use this tool only when the user explicitly asks for a workflow (for example, "use a workflow" or "使用 workflow"). That request is mandatory routing: do not substitute Agent, do the work inline, or decide that the task is too small.',
-  "- This starts a NEW run. To repair, extend, or retune an existing run, use AmendWorkflow with its run ID instead.",
+  '- The user explicitly asks for a workflow — "use a workflow", "with a workflow", "使用 workflow", "用工作流", or any phrasing that names workflow/工作流 as the means: this tool is mandatory. Do not substitute the Agent/Task subagent tools, do not do the work inline yourself, and do not judge the task too small for a workflow — the user chose the tool, and that choice is theirs. Size only decides how many subagents the script gets, never whether it is written.',
+  "- Without such an explicit request, do not start a workflow: delegate with the Agent tool or do the work yourself, even for multi-step or multi-subagent tasks.",
+].join("\n");
+
+const SKILL_GATE = `Before writing or revising a script, load the \`${DYNAMIC_WORKFLOW_SKILL_NAME}\` skill with the Skill tool: it carries the facade declarations the script is checked against, the authoring rules, and this tool's full contract. A call that submits a script is refused until that skill has been loaded in this session; running a saved workflow by name is exempt.`;
+
+const SOURCES =
+  "Pass exactly one source: `script` (a one-off script written inline; it is saved to a draft file the result names — revise that file and resubmit with `path`, never paste the script again), `saved` (a workflow saved in this project or globally, by name; check ListSavedWorkflows before writing one from scratch), or `path` (a script file on disk, normally the file a previous result named). To change a run that already exists — errored, completed, stopped or still running — call AmendWorkflow instead of starting over.";
+
+export const CREATE_WORKFLOW_TOOL_DESCRIPTION = [
+  INTRO,
   "",
-  "Workflow source — pass exactly one:",
-  "- `script`: an inline one-off TypeScript workflow.",
-  `- \`saved\`: a named definition from \`${SAVED_WORKFLOW_PROJECT_DIR}/\`; pass its declared values in \`saved.args\` (for example, \`saved: { name: "pr-review", args: { pr: "123" } }\`).`,
-  "- `path`: a workspace-relative or absolute script file. Pass `args` only with `path` when the file declares them.",
-  `Inline scripts are copied under \`${WORKFLOW_DRAFTS_DIR}/\`; on diagnostics, edit the named file and resubmit with \`path\` instead of pasting the whole script again. Before writing a new script, consider ListSavedWorkflows.`,
-  "The user confirms the actual script that will execute. Saved-workflow arguments are validated before execution; unknown keys, missing required values, and wrong types are rejected.",
+  WHEN_TO_USE,
   "",
-  "Required authoring contract:",
-  "- Plain TypeScript under strict checking. Use plain `interface`/`type` declarations for `ask<T>` results. No `import`, `export`, or `declare` statements; no Node/web APIs such as `process`, `fetch`, or `fs`.",
-  "- Top-level `await` and a final `return <value>` are allowed. The final return is the model-facing report; keep user-facing files and dashboards in `artifact.*` instead of duplicating them in the report.",
-  '- Cover the script with standalone `phase("...")` markers. Each phase needs at least one `agent(...).ask(...)` or `world.run(...)`; use human-readable compile-time literal names in the user\'s language.',
-  "- Named agents must be unique within a run and stable across revisions. Use `Promise.all` for joins only where the next step needs every result, and keep typed results narrow.",
-  "- `world.run` command names must be compile-time string literals. A nonzero exit code is a returned value, while spawn failures, timeouts, and output over the per-stream cap reject; branch on `exitCode` for deterministic gates.",
-  "- The runtime owns provider retries and concurrency adaptation. Set `max_concurrency` or `subagent_model` only when the user asks; `subagent_model` changes workflow subagents, not the main session model.",
+  SKILL_GATE,
   "",
-  "For complete facade signatures, return types, limits, examples, and snippet-only APIs, load the existing `dynamic-workflows` Skill before authoring complex code. It returns the exact compiler facade on demand; do not guess missing members.",
+  SOURCES,
 ].join("\n");

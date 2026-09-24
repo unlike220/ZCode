@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { FACADE_DTS, SNIPPET_FACADE_DTS } from "@zcode/dynamic-workflow";
 import { registerBuiltInTools } from "../src/tool/handlers/index.js";
-import { appendDynamicWorkflowReference } from "../src/tool/handlers/skill.js";
 import { ToolRegistryImpl } from "../src/tool/registry.js";
 
 const WORKFLOW_TOOL_NAMES = [
@@ -68,7 +68,7 @@ test("workflow descriptions do not duplicate the full facade reference", () => {
   );
 });
 
-test("CreateWorkflow keeps essential authoring and execution guidance", () => {
+test("CreateWorkflow keeps routing and Skill admission visible", () => {
   const create = workflowContracts().contracts.find(
     (contract) => contract.name === "CreateWorkflow",
   );
@@ -77,55 +77,37 @@ test("CreateWorkflow keeps essential authoring and execution guidance", () => {
   for (const marker of [
     "exactly one",
     "typechecked",
-    "confirmation",
+    "confirm",
     "background",
     "saved",
     "path",
-    "phase",
-    "world.run",
     "dynamic-workflows",
   ]) {
     assert.match(description, new RegExp(marker, "i"));
   }
+  assert.ok(description.length < 2_000);
 });
 
-test("SaveWorkflow keeps persistence and validation guidance", () => {
+test("SaveWorkflow keeps consent and Skill admission visible", () => {
   const save = workflowContracts().contracts.find((contract) => contract.name === "SaveWorkflow");
   const description = save?.description ?? "";
 
-  for (const marker of [
-    "scope",
-    "project",
-    "global",
-    "user agrees",
-    "script_path",
-    "description",
-    "REPLACES",
-    "typechecked",
-    "CreateWorkflow",
-  ]) {
+  for (const marker of ["scope", "user", "script_path", "dynamic-workflows", "CreateWorkflow"]) {
     assert.match(description, new RegExp(marker, "i"));
   }
+  assert.ok(description.length < 1_200);
 });
 
-test("EvalWorkflowSnippet keeps sandbox and evaluation guidance", () => {
+test("EvalWorkflowSnippet keeps invocation and Skill admission visible", () => {
   const evalTool = workflowContracts().contracts.find(
     (contract) => contract.name === "EvalWorkflowSnippet",
   );
   const description = evalTool?.description ?? "";
 
-  for (const marker of [
-    "synchronously",
-    "code",
-    "path",
-    "world.run",
-    "confirmation",
-    "Nothing is persisted",
-    "60 seconds",
-    "dynamic-workflows",
-  ]) {
+  for (const marker of ["synchronously", "code", "path", "dynamic-workflows"]) {
     assert.match(description, new RegExp(marker, "i"));
   }
+  assert.ok(description.length < 900);
 });
 
 test("all ten Dynamic Workflow capabilities remain registered when enabled", () => {
@@ -140,12 +122,19 @@ test("all ten Dynamic Workflow capabilities remain registered when enabled", () 
   );
 });
 
-test("the detailed facade remains reachable only through the on-demand Skill path", () => {
-  const plain = appendDynamicWorkflowReference("other-skill", "skill body");
-  const dynamic = appendDynamicWorkflowReference("zcode-guide:dynamic-workflows", "skill body");
-
-  assert.equal(plain, "skill body");
-  assert.match(dynamic, /Dynamic Workflow compiler reference/);
-  assert.ok(dynamic.includes(FACADE_DTS.trim()));
-  assert.ok(dynamic.includes(SNIPPET_FACADE_DTS.trim()));
+test("the bundled on-demand Skill carries the exact compiler facade within the result budget", async () => {
+  const skill = await readFile(
+    new URL("../../bundled-skills/skills/dynamic-workflows/SKILL.md", import.meta.url),
+    "utf8",
+  );
+  const fullFacade = skill.match(
+    /<!-- facade-dts:start -->\s*```ts\s*([\s\S]*?)\s*```\s*<!-- facade-dts:end -->/,
+  );
+  assert.ok(fullFacade);
+  assert.equal(fullFacade[1]?.trim(), FACADE_DTS.trim());
+  assert.ok(
+    skill.includes("The snippet facade is the `args`, `log`, `files`/`git` and `world.run` parts"),
+  );
+  assert.ok(Buffer.byteLength(skill, "utf8") < 100_000);
+  assert.ok(SNIPPET_FACADE_DTS.length < FACADE_DTS.length);
 });

@@ -1,18 +1,16 @@
-import { SAVED_WORKFLOW_GLOBAL_DIR, SAVED_WORKFLOW_PROJECT_DIR } from "@zcode/contracts";
+// SaveWorkflow 的常驻描述。
+//
+// 文件格式、实参声明与写作规则都在 `dynamic-workflows` 技能的「Tool
+// reference」里，由技能门保证读过。留在这里的是唯一一条**在决定调不调之前**就必须看见的
+// 规则——绝不主动保存。保存会在用户仓库里留下文件，而模型对「看起来挺通用」的判断远比用户
+// 宽松；这条门槛必须常驻，不能等到技能加载之后。
 
-/** Provider contract for persisting a reusable Dynamic Workflow definition. */
+import { DYNAMIC_WORKFLOW_SKILL_NAME } from "@zcode/contracts";
+
 export const SAVE_WORKFLOW_TOOL_DESCRIPTION = [
-  "Save a dynamic-workflow TypeScript script as a reusable definition. The required `scope` chooses project or global storage; the definition can later be run by name with CreateWorkflow and discovered with ListSavedWorkflows.",
-  `Project definitions are saved under \`${SAVED_WORKFLOW_PROJECT_DIR}/<name>.dwf.ts\` and are visible in that project. Global definitions are saved under \`~/${SAVED_WORKFLOW_GLOBAL_DIR}/<name>.dwf.ts\` and are available from every project on this machine.`,
+  "Save a dynamic-workflow script with its metadata so it can be run again later by name (CreateWorkflow's `saved` source; ListSavedWorkflows lists them). The required `scope` decides whether it lives in this project or globally.",
   "",
-  'Use this tool only after the user agrees. If a newly written workflow merely looks reusable, suggest what would be saved and why, then wait; an explicit request such as "save this workflow" is agreement.',
+  "NEVER call this tool unsolicited: saving writes a file into the user's repository, and that is their decision. When a workflow you just built looks reusable, suggest saving it in one sentence and wait; call SaveWorkflow only after the user agrees, or when the user asks directly.",
   "",
-  "Input and persistence rules:",
-  "- Pass exactly one source: `script` for inline TypeScript, or `script_path` for an existing working draft named by a CreateWorkflow or AmendWorkflow result. A `script_path` file's workflow metadata block is discarded; the fields in this call supply the saved metadata.",
-  "- `description` is required. `whenToUse` is optional guidance for future callers. Declare only reusable `args` (each has a `type` of `string`, `number`, `boolean`, or `json`, with optional description, required flag, and default). CreateWorkflow validates callers against that declaration before running.",
-  "- Saving an existing name REPLACES that definition. The confirmation shows the destination and whether this is an overwrite; choose the name deliberately.",
-  "- The script is typechecked before the confirmation and before any file is written. Errors return diagnostics and nothing is saved. A successful save returns the path and the exact CreateWorkflow invocation shape.",
-  "",
-  'The script uses the same authoring contract as CreateWorkflow: strict plain TypeScript, no imports/exports/ambient `declare`, no Node/web APIs, a final return, and human-readable standalone `phase("...")` markers with an ask or deterministic `world.run` in every phase.',
-  "For complete facade signatures, limits, examples, and the exact compiler reference, load the existing `dynamic-workflows` Skill before authoring complex code. The facade is available there on demand and is not duplicated in this tool description.",
+  `Load the \`${DYNAMIC_WORKFLOW_SKILL_NAME}\` skill with the Skill tool first: it carries the file format, the argument declarations and the authoring rules. The call is refused until that skill has been loaded in this session. Pass \`script\` (the body only) or \`script_path\` (a draft file, saved without re-emitting it), never both.`,
 ].join("\n");
