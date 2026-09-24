@@ -35,6 +35,7 @@ import {
   recordCompactSuccess,
 } from "./turn-loop-state.js";
 import type { RegularTurnLoopState } from "./turn-loop-state.js";
+import { exposeToolsForModelStep } from "../../tool/discovery.js";
 import {
   appendTurnRequestEntries,
   commitTurnRequestEntries,
@@ -112,11 +113,15 @@ export async function runRegularTurnLoop(
     // automation 派发到已 active 会话或重试恢复时，入口 metadata 可能没有带到
     // loop state；但 queryId 仍是 automation-*。provider 请求边界必须按 queryId 再硬过滤
     // automation 写工具，否则模型会先看到并创建、修改或删除任务定义。
-    const tools = state.automationCreateLimitReached
+    const availableTools = state.automationCreateLimitReached
       ? []
       : turnDisallowedTools
         ? this.getTools(state.model).filter((tool) => !turnDisallowedTools.has(tool.name))
         : this.getTools(state.model);
+    const tools = exposeToolsForModelStep({
+      candidates: availableTools,
+      recentNames: state.recentExposedToolNames ?? [],
+    });
     finishTools();
     if (!outputTokenRecoveryActive && this.needsPlanModeExitReminder) {
       this.needsPlanModeExitReminder = false;

@@ -46,6 +46,7 @@ import {
 import type { CompactTimelineContext, RuntimeModelTextResult } from "../types.js";
 import type { Model } from "../deps.js";
 import type { AgentRuntimeInternal } from "../internal.js";
+import { TOOL_SEARCH_NAME } from "../../tool/discovery.js";
 import type { CompactAttemptOutcome } from "./turn-loop-state.js";
 import {
   legacySyntheticRuntimeMetadata,
@@ -249,10 +250,12 @@ async function compactActiveConversationImpl(
     events,
   );
   // 止血原因：massive MCP 工具会把 compact summary request 的 provider context 撑爆。
-  // ToolSearch/deferred tools 完成前，仅在工具数超过阈值时让 compact summary 保持无工具。
+  // Compact 保留自身既有的工具数策略；交互式 ToolSearch 不属于该固定调用。
   await this.initializeMcp(turnTraceContext);
   throwIfTurnAborted(options.abortSignal);
-  const runtimeCompactTools = this.getTools(compactModel);
+  const runtimeCompactTools = this.getTools(compactModel).filter(
+    (tool) => tool.name !== TOOL_SEARCH_NAME,
+  );
   const compactTools =
     runtimeCompactTools.length > COMPACT_TOOL_KEEP_MAX_COUNT ? [] : runtimeCompactTools;
 

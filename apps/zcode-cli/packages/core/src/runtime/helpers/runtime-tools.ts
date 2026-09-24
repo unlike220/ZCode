@@ -23,6 +23,8 @@ import { isStaleBranchRuntimeTaskEvent } from "../methods/runtime-command-genera
 import { resolveEnabledProjectMemoryRoot } from "./project-memory.js";
 import { resolveRuntimeProjectIntelligenceRoot } from "./project-intelligence.js";
 import { sessionHasLoadedSkill } from "../../agent/loaded-skills.js";
+import { createToolSearchEntry, TOOL_SEARCH_NAME } from "../../tool/discovery.js";
+import { isToolNameDisallowed } from "../../tool/tool-visibility.js";
 
 const DEFAULT_SUBAGENT_BACKGROUND_BASH_MAX_MS = 3_600_000;
 const EMPTY_RUNTIME_HOOK_CONFIG = {
@@ -90,6 +92,15 @@ function registerRuntimeBuiltInTools(runtime: AgentRuntimeInternal, deps: AgentR
     // 里与 turn 级名单合并，见 tool-allowlist.ts 的根因注释。
     disallowedTools: resolveRuntimeDisallowedTools(runtime.config),
   });
+  if (!isToolNameDisallowed(TOOL_SEARCH_NAME, resolveRuntimeDisallowedTools(runtime.config))) {
+    // 搜索只访问本 runtime 已注册工具；显式 allowlist 仍限制可发现、可执行集合。
+    runtime.registry.register(
+      createToolSearchEntry(
+        runtime.registry,
+        (model) => new Set(runtime.getTools(model).map((tool) => tool.name)),
+      ),
+    );
+  }
 }
 
 function createRuntimeHookRunner(

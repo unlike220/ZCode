@@ -2,8 +2,8 @@
 
 ## Behavior
 
-Dynamic Workflow keeps the same ten provider-visible capabilities and the same
-registration/enablement boundary. Their default descriptions contain the
+Dynamic Workflow keeps the same ten registered provider-capable tools and the same
+registration/enablement boundary. When exposed, their descriptions contain the
 purpose, routing, and Skill-loading requirement needed before a tool call. The
 compiler facade and extended authoring reference are not embedded in the
 default tool corpus.
@@ -56,7 +56,8 @@ available without loading the Skill.
 
 ```text
 default turn
-  -> concise ten-tool contracts
+  -> ToolSearch discovers an authoring capability when needed
+  -> concise selected tool contract on the next model step
   -> model chooses an authoring tool
   -> Skill("dynamic-workflows")
   -> Skill loader returns bundled rules and compiler facade reference

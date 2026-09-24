@@ -40,6 +40,7 @@ import { recordToolUsageFromResult } from "./turn-tool-usage.js";
 import { recordBrowserTurnToolResult } from "../../repl/browser-turn-state.js";
 import { createRuntimeToolResultEntry } from "../../agent/message-history.js";
 import { commitTurnRequestEntries } from "./turn-output-token-continuation.js";
+import { recordToolSearchResults } from "./turn-tool-discovery.js";
 export async function executeToolCallsForModelStep(
   this: AgentRuntimeInternal,
   state: RegularTurnLoopState,
@@ -242,6 +243,7 @@ export async function executeToolCallsForModelStep(
   const results = coreToolCalls
     .map((toolCall) => resultById.get(toolCall.id))
     .filter((result): result is ToolExecutionResult => result !== undefined);
+  recordToolSearchResults(this, state, results);
   for (const result of results) {
     recordBrowserTurnToolResult({
       output: result.output,

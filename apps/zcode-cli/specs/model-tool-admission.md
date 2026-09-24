@@ -5,8 +5,8 @@
 This spec adds deterministic, per-request provider tool admission before the
 Context Fix #1 hard request-budget preflight. It does not unregister tools,
 change feature enablement, initialize or stop MCP servers, interpret user text,
-change the token estimator, reduce the output reserve or safety margin, or
-implement lazy tool discovery.
+change the token estimator, or reduce the output reserve or safety margin.
+Context Fix #4 selects the currently relevant exposed subset before admission.
 
 Tool registration remains the source of feature availability. Admission only
 controls which already-enabled tool schemas are exposed to one physical model
@@ -16,7 +16,9 @@ request.
 
 For every model attempt with a known local request budget:
 
-1. Build the normal complete candidate tool catalog.
+1. Receive the provider-exposed candidate catalog from core (the complete
+   registry for an explicit complete-tool context, or Context Fix #4's lazy
+   subset for an ordinary interactive turn).
 2. Project messages and tools to the provider-facing AI SDK representation.
 3. If the complete catalog fits Context Fix #1, expose it unchanged.
 4. If it does not fit, retain mandatory tools and admit remaining tools
@@ -36,7 +38,7 @@ not fit, mandatory tools remain present and Context Fix #1 rejects the request
 locally.
 
 When the context window or requested output budget is unknown, admission does
-not prune: the complete candidate catalog continues to the existing provider
+not prune: the received candidate catalog continues to the existing provider
 fallback path.
 
 ## Ownership and boundary
@@ -57,7 +59,7 @@ schema.
 
 ```text
 core registry (feature availability)
-  -> complete ModelToolContract candidates
+  -> current ModelToolContract exposure candidates
   -> provider-facing message/tool projection
   -> adapters tool admission
   -> Context Fix #1 hard preflight
@@ -152,10 +154,8 @@ logged by admission.
 9. Generate and stream expose the same admitted set for equivalent requests.
 10. Existing request-budget and Dynamic Workflow context tests remain passing.
 
-## Migration boundary and future work
+## Migration boundary
 
-Context Fix #3 is admission, not discovery. A constrained model can still lose
-optional capabilities on a turn because there is not yet an on-demand schema
-search/retrieval path. Context Fix #4 will address dynamic/lazy tool discovery.
-This fix intentionally does not weaken the conservative estimator to compensate
-for that limitation.
+Context Fix #3 remains admission, not discovery. Context Fix #4 supplies a
+bounded on-demand schema exposure path before this admission stage. Neither
+stage weakens the conservative estimator.

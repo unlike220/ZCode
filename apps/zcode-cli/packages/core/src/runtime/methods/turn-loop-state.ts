@@ -74,6 +74,8 @@ export interface TurnRequestState {
 }
 
 export interface RegularTurnLoopState {
+  /** 本 product turn 最近发现的工具；只影响 provider exposure，不是执行注册表。 */
+  recentExposedToolNames?: string[];
   activeTurn?: ActiveTurnSteeringState;
   /** Host admission 显式传入的本轮 automation 身份；不能从持久 task metadata 推断。 */
   automationId?: string;

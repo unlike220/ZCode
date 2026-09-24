@@ -1,4 +1,5 @@
 import type { Model, ModelInputMessage, ModelToolContract, TraceContext } from "../deps.js";
+import { TOOL_SEARCH_NAME } from "../../tool/discovery.js";
 import type { AgentTelemetryCausation, ModelApiOperation } from "@zcode/contracts";
 import {
   PermissionService,
@@ -72,7 +73,10 @@ export function captureProjectMemoryAgentContext(
     model,
     operation: input.operation,
     readFileState: new Map(runtime.readFileState),
-    tools: runtime.getTools(model).map((tool) => ({ ...tool })),
+    tools: runtime
+      .getTools(model)
+      .filter((tool) => tool.name !== TOOL_SEARCH_NAME)
+      .map((tool) => ({ ...tool })),
     traceContext: input.traceContext,
     workingDirectory: runtime.workingDirectory,
     workspaceRoot: runtime.workspaceRoot,

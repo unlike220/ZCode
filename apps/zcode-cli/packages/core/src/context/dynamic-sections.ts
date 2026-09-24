@@ -41,7 +41,10 @@ const CONTEXT_MANAGEMENT_PROMPTS = {
   ].join("\n"),
 } as const;
 
-export function buildSessionGuidanceSection(toolNames: readonly string[], hasSkills = false): ContextSection | null {
+export function buildSessionGuidanceSection(
+  toolNames: readonly string[],
+  hasSkills = false,
+): ContextSection | null {
   const tools = new Set(toolNames);
   const lines = ["# Session-specific guidance"];
 
@@ -58,7 +61,15 @@ export function buildSessionGuidanceSection(toolNames: readonly string[], hasSki
   // }
 
   if (tools.has("Skill") && hasSkills) {
-    lines.push("- When the user types `/<skill-name>`, invoke it via Skill. Only use skills listed in the user-invocable skills section \u2014 don't guess.");
+    lines.push(
+      "- When the user types `/<skill-name>`, invoke it via Skill. Only use skills listed in the user-invocable skills section \u2014 don't guess.",
+    );
+  }
+
+  if (tools.has("ToolSearch")) {
+    lines.push(
+      "- If visible tools lack a needed capability, use ToolSearch to find additional registered tools.",
+    );
   }
 
   // if (tools.has("AskUserQuestion")) {
