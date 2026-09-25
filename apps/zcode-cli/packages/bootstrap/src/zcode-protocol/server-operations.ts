@@ -104,6 +104,7 @@ import {
   type ZCodeProtocolToolInputTransmissionState,
 } from "./server-types.js";
 import { createWorkspaceZCodeApp, ensureSessionModelAvailable } from "./workspace-model-runtime.js";
+import { resolveSessionDynamicWorkflowEnabled } from "./dynamic-workflow-policy.js";
 import { buildAppUsageSnapshot, resolveTzOffsetMs } from "./usage-stats-builder.js";
 import { createProtocolInteractionBroker } from "./interaction-broker.js";
 import { createProtocolAutomationPort } from "./automation-port.js";
@@ -3339,12 +3340,13 @@ async function createRecord(
       taskType,
       // 动态工作流灰度门：与 offPeakPort
       // 同一套读法——本次 create/resume 参数优先，缺席时读 Host 同步到进程的 workspace 级
-      // 结论；两者都没有就是 false（fail-closed）。这里**必须写出显式布尔**，不能省成
-      // undefined：core 把「缺席」定义为「不参与灰度、保留全部工具」（TUI / headless /
-      // workflow_child 的语义），受信 Host 创建的会话不能落进那条豁免。
-      dynamicWorkflowEnabled:
-        ("dynamicWorkflowEnabled" in params && params.dynamicWorkflowEnabled === true) ||
-        context.appRuntimePreferences.dynamicWorkflowEnabled === true,
+      // 结论；两者都没有就是 false（fail-closed）。这里继续写出显式布尔，确保 Host 的
+      // workspace 级裁决完整进入 session；core 对缺席值本身也统一按 false 规范化，不再存在
+      // TUI/direct-runtime 的隐式开启豁免。
+      dynamicWorkflowEnabled: resolveSessionDynamicWorkflowEnabled(
+        "dynamicWorkflowEnabled" in params ? params.dynamicWorkflowEnabled : undefined,
+        context.appRuntimePreferences.dynamicWorkflowEnabled,
+      ),
       // 协议侧的工具允许/拒绝列表是 session 级安全边界，必须进入 runtimeConfig，
       // 不能只依赖 prompt 文本约束，否则内置工具和动态 MCP 工具仍可能越过调用面。
       toolAllowlist: "toolAllowlist" in params ? params.toolAllowlist : undefined,

@@ -38,6 +38,14 @@ export function isDynamicWorkflowModeEnabled(mode: DynamicWorkflowMode): boolean
   return mode !== "disabled";
 }
 
+/**
+ * Runtime/session boolean normalization. Optional protocol/config fields stay optional for
+ * backward compatibility, but omission has one meaning everywhere: disabled.
+ */
+export function resolveDynamicWorkflowEnabled(value: boolean | undefined): boolean {
+  return value === true;
+}
+
 /** 快照的来源：观测用，UI 与日志据此区分「服务端关」与「本地覆盖」。 */
 export type DynamicWorkflowClientConfigSource = "remote" | "override" | "default";
 

@@ -14,6 +14,7 @@ import {
   type AgentOutput,
   type TraceContext,
 } from "@zcode/contracts";
+import { resolveDynamicWorkflowEnabled } from "@zcode/shared";
 import { TASK_TOOL_NAME } from "../compat.js";
 import type { ToolEntry, ToolHandler } from "../types.js";
 import { formatAgentProfilesForPrompt, type AgentProfile } from "../../subagent/profile.js";
@@ -117,11 +118,11 @@ function buildAgentProviderDescription(
     // 只保留「用户点名工作流」这一种情形：工作流一律由用户显式请求触发，与系统提示词其余
     // 部分一致。不能把「结果层层喂给下一步的多代理编排」也划给 CreateWorkflow，
     // 那等于让模型在用户没开口时自行选择工作流。
-    ...(options.dynamicWorkflowEnabled === false
-      ? []
-      : [
+    ...(resolveDynamicWorkflowEnabled(options.dynamicWorkflowEnabled)
+      ? [
           '- If the user explicitly asks for a workflow ("use a workflow", "使用 workflow", "用工作流", or any phrasing naming workflow/工作流 as the means), the CreateWorkflow tool is mandatory: do not use this tool instead, however small the task.',
-        ]),
+        ]
+      : []),
   ].join("\n");
 }
 
@@ -320,7 +321,7 @@ export function createAgentToolEntry(
   _options: {
     embeddedSearchEnabled?: boolean;
     profiles?: readonly AgentProfile[];
-    /** 见 buildAgentProviderDescription：缺省 true，只有灰度显式关闭时才去掉工作流那一行。 */
+    /** 见 buildAgentProviderDescription：只有显式 true 才加入工作流路由提示。 */
     dynamicWorkflowEnabled?: boolean;
   } = {},
 ): ToolEntry {

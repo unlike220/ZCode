@@ -1,4 +1,7 @@
-import { zcodeWorkspaceUpdateDynamicWorkflowPolicyParamsSchema } from "@zcode/shared";
+import {
+  resolveDynamicWorkflowEnabled,
+  zcodeWorkspaceUpdateDynamicWorkflowPolicyParamsSchema,
+} from "@zcode/shared";
 import { parseParams, type ZCodeProtocolAgentServerContext } from "./server-types.js";
 
 /**
@@ -9,6 +12,19 @@ import { parseParams, type ZCodeProtocolAgentServerContext } from "./server-type
  * （subscribe → resumePersistedSession，没有 host 参数通道）统一读取。
  * 只影响之后创建/恢复的 record；已活跃 record 的工具面不回收（灰度中途翻转策略一致）。
  */
+/**
+ * Session create/resume may carry an explicit per-session decision. Presence wins over
+ * the Host workspace fallback, including explicit false. Omission inherits Host policy.
+ */
+export function resolveSessionDynamicWorkflowEnabled(
+  requested: boolean | undefined,
+  hostEnabled: boolean,
+): boolean {
+  return requested === undefined
+    ? resolveDynamicWorkflowEnabled(hostEnabled)
+    : resolveDynamicWorkflowEnabled(requested);
+}
+
 export async function updateDynamicWorkflowPolicy(
   context: ZCodeProtocolAgentServerContext,
   rawParams: unknown,

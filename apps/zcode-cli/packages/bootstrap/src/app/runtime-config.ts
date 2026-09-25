@@ -1,7 +1,10 @@
 import type { ConfigResult } from "@zcode/adapters/config";
 import { resolveInitialModelSelection, type ModelSelectionOptions } from "@zcode/provider";
 import { resolveBashTimeoutPolicy, type AgentProfile, type AgentRuntimeConfig } from "@zcode/core";
-import { type BuiltInSubagentModelSelectionOverrides } from "@zcode/shared";
+import {
+  resolveDynamicWorkflowEnabled,
+  type BuiltInSubagentModelSelectionOverrides,
+} from "@zcode/shared";
 import {
   type CollaborationMode,
   type HookConfigSource,
@@ -117,6 +120,9 @@ export function resolveAppRuntimeConfig(input: {
     options.runtimeConfig?.subagents?.builtInModelSelectionOverrides ?? {};
   const runtimeConfig: AgentRuntimeConfig = {
     ...options.runtimeConfig,
+    dynamicWorkflowEnabled: resolveDynamicWorkflowEnabled(
+      options.runtimeConfig?.dynamicWorkflowEnabled,
+    ),
     bashTimeoutPolicy:
       options.runtimeConfig?.bashTimeoutPolicy ??
       resolveBashTimeoutPolicy(options.env ?? process.env),

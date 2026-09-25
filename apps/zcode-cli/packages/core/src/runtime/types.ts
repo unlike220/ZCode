@@ -205,10 +205,9 @@ export interface AgentRuntimeConfig {
   parentSessionId?: SessionId;
   taskType?: SessionTaskType;
   /**
-   * 动态工作流开关：Host 判定后经
-   * ZCode Protocol 下发，runtime 只消费。**缺席即开启**，保留 TUI 默认值；
-   * headless 按 --enable-workflow 显式传 true/false（默认 false），workflow_child 继承父配置。
-   * false 会关闭十个工作流工具，不改变其他工具的注册策略。
+   * 动态工作流可用性。协议/旧调用为兼容可省略，但 runtime 统一规范化为显式布尔：
+   * true 开启；false 或缺席关闭。TUI 的既有默认开启由 TUI 入口显式传 true；
+   * headless 按 --enable-workflow 显式传值，child runtime 继承父配置。
    */
   dynamicWorkflowEnabled?: boolean;
 

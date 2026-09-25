@@ -16,6 +16,7 @@ import {
   SUBMIT_RESULT_TOOL_NAME,
   type JsonSchema,
 } from "@zcode/contracts";
+import { resolveDynamicWorkflowEnabled } from "@zcode/shared";
 import type { ToolEntry } from "../types.js";
 import type { AgentProfile } from "../../subagent/profile.js";
 import { readToolEntry } from "./read.js";
@@ -197,10 +198,9 @@ interface RegisterBuiltInToolsOptions {
   /** Off-Peak 会话内创建工具面；由 host 的 offPeakToolEnabled flag（灰度/远程门）驱动。 */
   includeOffPeak?: boolean;
   /**
-   * 动态工作流灰度门。**只有显式 false
-   * 才下架** DYNAMIC_WORKFLOW_TOOL_NAMES：缺席代表调用方不参与灰度（TUI、headless、
-   * workflow_child），它们必须保留全部工具面；fail-closed 的缺省值落在协议服务端的
-   * appRuntimePreferences，不在这一层。
+   * 动态工作流可用性门。只有显式 true 才注册 DYNAMIC_WORKFLOW_TOOL_NAMES；
+   * false 或缺席都按关闭处理。TUI 若保留默认开启，必须在入口显式传 true；
+   * protocol/headless/child runtime 同样只消费已规范化的布尔值。
    */
   includeDynamicWorkflow?: boolean;
   /** node_repl（js）默认关闭，由官方 browser-use 插件启用。 */
@@ -285,7 +285,7 @@ export function registerBuiltInTools(
       continue;
     }
     if (
-      options.includeDynamicWorkflow === false &&
+      !resolveDynamicWorkflowEnabled(options.includeDynamicWorkflow) &&
       DYNAMIC_WORKFLOW_TOOL_NAMES.has(entry.metadata.name)
     ) {
       continue;
@@ -319,14 +319,14 @@ function resolveBuiltInToolEntryForBranch(
     return createAgentToolEntry({
       embeddedSearchEnabled: options.embeddedSearchEnabled,
       profiles: options.agentProfiles,
-      dynamicWorkflowEnabled: options.includeDynamicWorkflow !== false,
+      dynamicWorkflowEnabled: resolveDynamicWorkflowEnabled(options.includeDynamicWorkflow),
     });
   }
   if (entry.metadata.name === "Task") {
     return createTaskToolEntry({
       embeddedSearchEnabled: options.embeddedSearchEnabled,
       profiles: options.agentProfiles,
-      dynamicWorkflowEnabled: options.includeDynamicWorkflow !== false,
+      dynamicWorkflowEnabled: resolveDynamicWorkflowEnabled(options.includeDynamicWorkflow),
     });
   }
   if (entry.metadata.name === "EnterPlanMode") {

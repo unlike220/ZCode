@@ -157,6 +157,9 @@ export function createTuiSubmitPrompt(
           : {}),
         resume: sessionId !== undefined,
         runtimeConfig: {
+          // TUI 保留既有产品策略：默认提供 Dynamic Workflow。
+          // 现在必须显式写 true，不能再依赖 core 把 undefined 解释成开启。
+          dynamicWorkflowEnabled: true,
           ...(modeState.override ? { mode: modeState.override } : {}),
           ...(toolDisallowlist ? { toolDisallowlist } : {}),
           ...(forceMcs ? { midConversationSystem: { mode: "force" as const } } : {}),

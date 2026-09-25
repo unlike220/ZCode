@@ -6,6 +6,7 @@ import {
   RESUME_WORKFLOW_RUN_TOOL_NAME,
   SAVE_WORKFLOW_TOOL_NAME,
 } from "@zcode/contracts";
+import { resolveDynamicWorkflowEnabled } from "@zcode/shared";
 import { EXPLORE_AGENT_ALLOWED_TOOLS } from "../../subagent/explore-tools.js";
 import type { AgentRuntimeConfig } from "../types.js";
 import { normalizeToolNameAlias } from "../../tool/tool-visibility.js";
@@ -62,17 +63,16 @@ export function resolveRuntimeDisallowedTools(
 }
 
 /**
- * 动态工作流开关在 registerBuiltInTools 上的取值。
- * **缺席即开启**：TUI 保留默认工具面；headless 根据 --enable-workflow 显式写 true/false，
- * protocol session 由受信 Host 控制，workflow_child 继承父配置。fail-closed 的缺省值在
- * headless 入口和协议服务端的 appRuntimePreferences，不在这一层。
+ * 动态工作流开关在 registerBuiltInTools 上的规范化取值。
+ * 缺席一律按关闭处理；TUI 若要保留产品默认开启，必须在入口显式写 true。
+ * protocol/headless 同样传显式布尔，workflow_child/subagent 继承父 runtime 已规范化的值。
  *
  * 之所以和 resolveRuntimeDisallowedTools 一样收在这里而不是写在调用点：注册面有**两个**入口
  * （helpers/runtime-tools.ts 的首次装配、methods/embedded-search-branch.ts 的分支刷新），
  * 两个入口必须使用同一规则，否则刷新工具列表时可能重新注册已关闭的工作流工具。
  */
 export function resolveRuntimeDynamicWorkflowToolsIncluded(config: AgentRuntimeConfig): boolean {
-  return config.dynamicWorkflowEnabled !== false;
+  return resolveDynamicWorkflowEnabled(config.dynamicWorkflowEnabled);
 }
 
 export function resolveBuiltInToolAllowlist(
