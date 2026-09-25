@@ -41,7 +41,9 @@ export function shouldShowRootStartupLoading(state: RootStartupLoadingVisibility
 }
 
 export function shouldEnableProviderAvailabilityLoginEntryGuard(): boolean {
-  return true;
+  // Account login and provider setup are optional entry points. Startup must remain usable
+  // without a Z.AI account so local/custom API-key providers can be configured independently.
+  return false;
 }
 
 export function shouldResolveProviderStartupState(state: ProviderStartupResolutionState): boolean {

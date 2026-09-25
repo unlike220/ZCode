@@ -84,7 +84,6 @@ export function useRootWorkspaceActions({
   updateAppSettings,
   setOAuthError,
   setUser,
-  onProviderFamilyDomainClearedAfterLogout,
   userId,
   onOpenRemoteConnection,
   workbenchGroupClientMode = "desktop-continuous",
@@ -104,7 +103,6 @@ export function useRootWorkspaceActions({
   updateAppSettings: (patch: Partial<AppSettings>) => Promise<void>;
   setOAuthError: (error: string | null) => void;
   setUser: (user: UserInfo | null) => void;
-  onProviderFamilyDomainClearedAfterLogout?: () => void;
   userId?: string;
   onOpenRemoteConnection?: (preference?: OpenRemoteConnectionPreference) => void;
   workbenchGroupClientMode?: ZCodeTaskClientMode;
@@ -310,8 +308,8 @@ export function useRootWorkspaceActions({
       return;
     }
 
-    // Bug 原因：telemetry 是辅助链路；等待网络重试会延迟退出登录，甚至在旧的无超时实现里
-    // 无限阻塞主流程。这里只调度事件，Main 侧负责有界重试与退出 drain。
+    // Telemetry 是辅助链路；等待网络重试不应延迟断开账号。
+    // 这里只调度事件，由 Main 侧负责有界发送。
     void reportAppTelemetryEvent(
       platform,
       {
@@ -333,9 +331,6 @@ export function useRootWorkspaceActions({
       providerFamilyDomainUpdatedAt: Date.now(),
       providerFamilyDomainMigrated: true,
     });
-    if (!nextProviderFamilyDomain) {
-      onProviderFamilyDomainClearedAfterLogout?.();
-    }
     // ZAI/BigModel provider 已恢复为 App 登录镜像。
     // 派生 Coding/Start key 由 OAuth logout 的 host hook 统一清理，Root 只负责刷新展示态。
     setOAuthError(null);
@@ -343,13 +338,12 @@ export function useRootWorkspaceActions({
     // 退出登录后刷新 Account Source 与 Registry，避免继续展示退出前的 Provider 状态。
     await refreshProviderState();
     // Coding Plan 官网 webview 使用独立持久 partition，App logout 必须同步清理。
+    // Account login is optional, so stay in the current workspace instead of relaunching ZCode.
     await platform.executeDesktopCommand(DesktopCommandIds.ClearCodingPlanWebviewStorage);
-    await platform.executeDesktopCommand(DesktopCommandIds.RelaunchApp);
   }, [
     intl,
     requestConfirmation,
     refreshProviderState,
-    onProviderFamilyDomainClearedAfterLogout,
     platform,
     services.oauthService,
     services.modelSelectionService,

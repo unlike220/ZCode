@@ -905,12 +905,12 @@ const enUS: Record<string, string> = {
   "app.currentTheme": "Current: {theme}",
   "app.login": "Connect",
   "app.logout": "Disconnect",
-  "logout.confirm.title": "Disconnect and restart ZCode?",
+  "logout.confirm.title": "Disconnect Z.AI account?",
   "logout.confirm.descriptionWithRunningSessions":
-    "{count} session(s) are currently running. Disconnecting will interrupt them and restart the app.",
+    "{count} session(s) are currently running. Sessions that rely on this account may stop after disconnecting.",
   "logout.confirm.descriptionDefault":
-    "The app will restart after disconnecting. You will need to connect your account again.",
-  "logout.confirm.ok": "Disconnect and restart",
+    "Your Z.AI account will be disconnected. ZCode will stay open and other configured providers remain available.",
+  "logout.confirm.ok": "Disconnect",
   "logout.confirm.cancel": "Cancel",
   "sidebar.profile.notLoggedIn": "Connect",
   "app.selectFile": "Select a file to get started",

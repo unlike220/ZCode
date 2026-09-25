@@ -90,12 +90,7 @@ interface RemoteConnectionOpenPreference {
   preferredWslDistro?: string;
 }
 
-type WelcomeScreenOpenReason =
-  | "startup-provider-required"
-  | "manual-login"
-  | "provider-request"
-  | "logout-provider-required"
-  | "session-expired";
+type WelcomeScreenOpenReason = "startup-provider-required" | "manual-login" | "provider-request";
 
 /**
  * Root —— 应用根组件
@@ -203,9 +198,12 @@ function RootInner({
     update: updateAppSettings,
   } = useSettings();
   const [welcomeScreenOpenReason, setWelcomeScreenOpenReason] =
-    useState<WelcomeScreenOpenReason | null>(() =>
-      consumeZcodeJwtInvalidRestartMarker() ? "session-expired" : null,
-    );
+    useState<WelcomeScreenOpenReason | null>(() => {
+      // Consume the restart marker so it stays one-shot, but do not turn an expired
+      // optional Z.AI account session into an app-wide login gate.
+      consumeZcodeJwtInvalidRestartMarker();
+      return null;
+    });
   const [providerFamilyDomainMigrationComplete, setProviderFamilyDomainMigrationComplete] =
     useState(false);
   const loginEntryRequest = useZCodeStore((state) => state.loginEntryRequest);
@@ -448,9 +446,8 @@ function RootInner({
           if (open) {
             return "startup-provider-required";
           }
-          // JWT 过期提示确认后会先写入 session-expired，随后 provider
-          // 启动门禁以 open=false 收尾。这里若无条件清空，会覆盖重新登录页并回到工作区。
-          // 门禁只能关闭自己拥有的启动登录态，不能清理其它交互来源的 reason。
+          // Provider 启动门禁只能关闭自己拥有的登录态，不能清理手动登录或
+          // provider 主动请求产生的入口。
           return currentReason === "startup-provider-required" ? null : currentReason;
         });
       },
@@ -484,8 +481,10 @@ function RootInner({
     setDirectoryBrowserOpen(true);
   }, []);
   const handleReauthenticationRequired = useCallback(() => {
-    setWelcomeScreenOpenReason("session-expired");
-  }, []);
+    // Losing an optional Z.AI account session must not block the workspace.
+    // Clear the stale account identity; account-backed features can request login again on demand.
+    setUser(null);
+  }, [setUser]);
   const {
     setWorkspaceActionError,
     startDraftInWorkspace,
@@ -517,9 +516,6 @@ function RootInner({
     updateAppSettings,
     setOAuthError,
     setUser,
-    onProviderFamilyDomainClearedAfterLogout: () => {
-      setWelcomeScreenOpenReason("logout-provider-required");
-    },
     userId: user?.id,
     onOpenRemoteConnection: allowRemoteWorkspace ? handleOpenRemoteConnection : undefined,
   });

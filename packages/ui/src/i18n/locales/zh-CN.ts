@@ -825,11 +825,12 @@ const zhCN: Record<string, string> = {
   "app.currentTheme": "当前: {theme}",
   "app.login": "连接使用",
   "app.logout": "断开连接",
-  "logout.confirm.title": "断开连接并重启 ZCode？",
+  "logout.confirm.title": "断开 Z.AI 账号连接？",
   "logout.confirm.descriptionWithRunningSessions":
-    "检测到 {count} 个会话正在运行。断开连接会中断这些会话并重启 App。",
-  "logout.confirm.descriptionDefault": "断开连接后会重启 App，之后需要重新连接账号。",
-  "logout.confirm.ok": "断开连接并重启",
+    "检测到 {count} 个会话正在运行。依赖此账号的会话在断开连接后可能停止。",
+  "logout.confirm.descriptionDefault":
+    "将断开 Z.AI 账号连接。ZCode 会继续保持打开，其他已配置的 Provider 仍可使用。",
+  "logout.confirm.ok": "断开连接",
   "logout.confirm.cancel": "取消",
   "sidebar.profile.notLoggedIn": "连接使用",
   "app.selectFile": "选择文件以开始",
