@@ -95,6 +95,7 @@ export async function runModelBackedTurnStep(
     sourceEntries: readonly (RuntimeMessageEntry | undefined)[];
     recordedMessages: RunModelTextRequestOptions["messages"];
     requestEntries: readonly RuntimeMessageEntry[];
+    toolExposureDiagnostics: NonNullable<RunModelTextRequestOptions["toolExposureDiagnostics"]>;
     tools: ModelToolContract[];
   },
 ): Promise<ModelStepResult> {
@@ -140,6 +141,7 @@ async function runModelBackedTurnStepImpl(
     sourceEntries: readonly (RuntimeMessageEntry | undefined)[];
     recordedMessages: RunModelTextRequestOptions["messages"];
     requestEntries: readonly RuntimeMessageEntry[];
+    toolExposureDiagnostics: NonNullable<RunModelTextRequestOptions["toolExposureDiagnostics"]>;
     tools: ModelToolContract[];
   },
   assistantMessageId: MessageId,
@@ -257,6 +259,7 @@ async function runModelBackedTurnStepImpl(
       onStreamTextDelta: (text) => streamingToolCoordinator.recordTextDelta(text),
       onStreamToolCall: (toolCall) => streamingToolCoordinator.accept(toolCall),
       streamRecovery: streamRecoveryRequest,
+      toolExposureDiagnostics: options.toolExposureDiagnostics,
       tools: options.tools,
       traceContext: modelTraceContext,
     });
@@ -609,6 +612,9 @@ async function runModelBackedTurnStepImpl(
       ...(fileChanges ? { fileChanges } : {}),
       ...(querySource === "main_turn" && result.contextUsageBreakdown
         ? { contextUsageBreakdown: result.contextUsageBreakdown }
+        : {}),
+      ...(querySource === "main_turn" && result.contextDiagnostics
+        ? { contextDiagnostics: result.contextDiagnostics }
         : {}),
       toolCallCount: toolCalls.length,
     },

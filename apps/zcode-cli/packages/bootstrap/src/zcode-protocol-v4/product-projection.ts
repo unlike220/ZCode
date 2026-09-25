@@ -4543,6 +4543,9 @@ export class ProductProjection {
                   ...(payload.contextUsageBreakdown && payload.contextUsageBreakdown.length > 0
                     ? { breakdown: payload.contextUsageBreakdown }
                     : {}),
+                  ...(payload.contextDiagnostics
+                    ? { diagnostics: payload.contextDiagnostics }
+                    : {}),
                 },
           cumulative: {
             inputTokens: cumulative.inputTokens + (usage.inputTokens ?? 0),

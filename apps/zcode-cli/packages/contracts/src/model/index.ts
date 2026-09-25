@@ -639,6 +639,31 @@ export interface ModelRequestSettings {
   seed?: number;
 }
 
+export interface ModelRequestContextDiagnostics {
+  /** Model-eligible tools before Context Fix #4 lazy exposure. Filled by Core. */
+  eligibleToolCount?: number;
+  /** Tools selected by Context Fix #4 for the model step. Filled by Core. */
+  exposedToolCount?: number;
+  /** Provider-compatible tools entering Context Fix #3 admission. */
+  candidateToolCount: number;
+  /** Provider tool schemas actually sent after Context Fix #3 admission. */
+  admittedToolCount: number;
+  omittedToolCount: number;
+  /** Candidate-set budget before Fix #3 pruning, when the local budget is known. */
+  candidateEstimatedInputTokens?: number;
+  candidateRemainingInputTokens?: number;
+  contextWindow?: number;
+  requestedOutputTokens?: number;
+  safetyMarginTokens?: number;
+  allowedInputTokens?: number;
+  estimatedMessageTokens?: number;
+  estimatedToolTokens?: number;
+  estimatedFramingTokens?: number;
+  estimatedInputTokens?: number;
+  remainingInputTokens?: number;
+  fits?: boolean;
+}
+
 export interface ModelTextRequest extends ModelRequestSettings {
   messages: ModelInputMessage[];
   tools?: ModelToolContract[];
@@ -652,6 +677,11 @@ export interface ModelTextRequest extends ModelRequestSettings {
    * This is intentionally omitted from the JSON schema below because it is not serializable.
    */
   statusSink?: ModelStatusSink;
+  /**
+   * Runtime-only observer for the final provider-facing context/admission budget.
+   * It is called while constructing provider options and is never serialized to the provider.
+   */
+  contextDiagnosticsSink?: (diagnostics: ModelRequestContextDiagnostics) => void;
   /**
    * Runtime-only trace context. Serialized requests should pass trace ids through metadata.
    */

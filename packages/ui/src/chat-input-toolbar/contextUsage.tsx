@@ -11,6 +11,7 @@ import {
 import {
   TID_CHAT_CONTEXT_USAGE_TRIGGER,
   type CodingPlanResetType,
+  type ZCodeContextDiagnostics,
   type ZCodeContextUsageBreakdownItem,
   type ZCodeProvider,
 } from "@zcode/shared";
@@ -247,6 +248,7 @@ export function ChatContextUsage({
     size: number;
     cache?: { hitRate: number | null };
     breakdown?: ZCodeContextUsageBreakdownItem[];
+    diagnostics?: ZCodeContextDiagnostics;
   } | null;
   selectedProvider: ZCodeProvider;
   intl: ReturnType<typeof useZCodeIntl>["intl"];
@@ -806,6 +808,72 @@ export function ChatContextUsage({
     () => buildContextUsageProgressSegments(breakdownSegments),
     [breakdownSegments],
   );
+  const diagnosticRows = useMemo(() => {
+    const diagnostics = renderableTaskUsage?.diagnostics;
+    if (!diagnostics) return [];
+    const rows: Array<{ label: string; value: string }> = [];
+    if (
+      diagnostics.estimatedInputTokens !== undefined &&
+      diagnostics.allowedInputTokens !== undefined
+    ) {
+      rows.push({
+        label: intl.formatMessage({ id: "chat.contextUsage.diagnostics.preflight" }),
+        value: `${formatContextUsageTokenCount(diagnostics.estimatedInputTokens, locale)} / ${formatContextUsageTokenCount(diagnostics.allowedInputTokens, locale)}`,
+      });
+    }
+    if (diagnostics.remainingInputTokens !== undefined) {
+      rows.push({
+        label: intl.formatMessage({ id: "chat.contextUsage.diagnostics.headroom" }),
+        value: formatContextUsageTokenCount(diagnostics.remainingInputTokens, locale),
+      });
+    }
+    if (
+      diagnostics.omittedToolCount > 0 &&
+      diagnostics.candidateEstimatedInputTokens !== undefined &&
+      diagnostics.estimatedInputTokens !== undefined
+    ) {
+      rows.push({
+        label: intl.formatMessage({ id: "chat.contextUsage.diagnostics.beforeAdmission" }),
+        value: `${formatContextUsageTokenCount(diagnostics.candidateEstimatedInputTokens, locale)} → ${formatContextUsageTokenCount(diagnostics.estimatedInputTokens, locale)}`,
+      });
+    }
+    if (diagnostics.exposedToolCount !== undefined && diagnostics.eligibleToolCount !== undefined) {
+      rows.push({
+        label: intl.formatMessage({ id: "chat.contextUsage.diagnostics.toolExposure" }),
+        value: intl.formatMessage(
+          { id: "chat.contextUsage.diagnostics.toolExposureValue" },
+          {
+            exposed: diagnostics.exposedToolCount,
+            eligible: diagnostics.eligibleToolCount,
+          },
+        ),
+      });
+    }
+    rows.push({
+      label: intl.formatMessage({ id: "chat.contextUsage.diagnostics.toolAdmission" }),
+      value: intl.formatMessage(
+        { id: "chat.contextUsage.diagnostics.toolAdmissionValue" },
+        {
+          admitted: diagnostics.admittedToolCount,
+          candidate: diagnostics.candidateToolCount,
+          omitted: diagnostics.omittedToolCount,
+        },
+      ),
+    });
+    if (diagnostics.requestedOutputTokens !== undefined) {
+      rows.push({
+        label: intl.formatMessage({ id: "chat.contextUsage.diagnostics.outputReserve" }),
+        value: formatContextUsageTokenCount(diagnostics.requestedOutputTokens, locale),
+      });
+    }
+    if (diagnostics.safetyMarginTokens !== undefined) {
+      rows.push({
+        label: intl.formatMessage({ id: "chat.contextUsage.diagnostics.safetyMargin" }),
+        value: formatContextUsageTokenCount(diagnostics.safetyMarginTokens, locale),
+      });
+    }
+    return rows;
+  }, [intl, locale, renderableTaskUsage?.diagnostics]);
   const percentageFormatter = useMemo(
     () =>
       new Intl.NumberFormat(locale, {
@@ -983,6 +1051,32 @@ export function ChatContextUsage({
                 </div>
               ) : null}
             </>
+          ) : null}
+          {renderableTaskUsage && diagnosticRows.length > 0 ? (
+            <div
+              className={cn(
+                "space-y-1.5",
+                (breakdownSegments.length > 0 || cacheHitRateLabel) &&
+                  "border-t border-border pt-3",
+              )}
+            >
+              <div className="text-ui-sm font-medium text-foreground">
+                {intl.formatMessage({ id: "chat.contextUsage.diagnostics.title" })}
+              </div>
+              <div className="grid gap-1.5">
+                {diagnosticRows.map((row) => (
+                  <div className="flex min-w-0 items-center gap-3 text-ui-sm" key={row.label}>
+                    <span className="min-w-0 truncate text-foreground-subtle">{row.label}</span>
+                    <span className="ml-auto shrink-0 text-right font-mono text-ui-sm tabular-nums text-foreground">
+                      {row.value}
+                    </span>
+                  </div>
+                ))}
+              </div>
+              <div className="text-ui-xs text-foreground-subtle">
+                {intl.formatMessage({ id: "chat.contextUsage.diagnostics.note" })}
+              </div>
+            </div>
           ) : null}
           {codingPlanUsageRemainingWithClose && hasCodingPlanUsageRemaining ? (
             <ChatCodingPlanUsageRemainingPanel

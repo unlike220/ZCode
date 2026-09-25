@@ -1,6 +1,12 @@
 import { beginLocalTurnPreparation } from "@zcode/contracts";
 import { runWithModelInvocationContext, traceContextToLogContext } from "../deps.js";
-import type { ModelReasoningContentBlock, ModelToolCall, ModelUsage, ToolCallId } from "../deps.js";
+import type {
+  ModelReasoningContentBlock,
+  ModelRequestContextDiagnostics,
+  ModelToolCall,
+  ModelUsage,
+  ToolCallId,
+} from "../deps.js";
 import {
   buildSuspiciousEmptyDiagnostics,
   finalizeSuspiciousEmptyModelResult,
@@ -75,6 +81,7 @@ export async function runModelTextRequest(
     mediaProjection,
     providerMessages: projectedOptions.messages,
   });
+  let contextDiagnostics: ModelRequestContextDiagnostics | undefined;
   // 正常请求传递模型级 effective 预算，Compact 传递 min(effective, 20K) 的 summary
   // 任务预算；adapter 只做 provider 兼容映射，不再施加独立 global cap。
   const modelInvocationContext = {
@@ -120,6 +127,12 @@ export async function runModelTextRequest(
     messages: projectedOptions.messages,
     tools: projectedOptions.tools,
     abortSignal: projectedOptions.abortSignal,
+    contextDiagnosticsSink: (diagnostics: ModelRequestContextDiagnostics) => {
+      contextDiagnostics = {
+        ...diagnostics,
+        ...(projectedOptions.toolExposureDiagnostics ?? {}),
+      };
+    },
     ...(projectedOptions.maxOutputTokens !== undefined
       ? { options: { maxOutputTokens: projectedOptions.maxOutputTokens } }
       : {}),
@@ -151,6 +164,7 @@ export async function runModelTextRequest(
     return {
       ...result,
       ...(contextUsageBreakdown.length > 0 ? { contextUsageBreakdown } : {}),
+      ...(contextDiagnostics ? { contextDiagnostics } : {}),
       toolCalls: normalizedToolCalls,
     };
   }
@@ -508,6 +522,7 @@ export async function runModelTextRequest(
 
   return {
     ...(contextUsageBreakdown.length > 0 ? { contextUsageBreakdown } : {}),
+    ...(contextDiagnostics ? { contextDiagnostics } : {}),
     finishReason,
     providerMetadata,
     reasoning: reasoning.length > 0 ? reasoning : undefined,

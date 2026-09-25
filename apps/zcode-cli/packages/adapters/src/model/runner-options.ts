@@ -1,5 +1,5 @@
 import { Output, jsonSchema } from "ai";
-import type { ModelToolChoice } from "@zcode/contracts";
+import type { ModelRequestContextDiagnostics, ModelToolChoice } from "@zcode/contracts";
 import type { EnvRecord } from "./model-execution.js";
 import { toAiSdkMessages } from "./transform.js";
 import { toAiSdkTools } from "./tool-transform.js";
@@ -95,6 +95,7 @@ export function createGenerateTextOptions(input: {
       : undefined,
   }) as AiSdkGenerateTextOptions;
   assertProviderFacingRequestBudget(options, input.request.maxOutputTokens, input.resolved);
+  publishContextDiagnostics(input.request, providerFacing.diagnostics);
   return options;
 }
 
@@ -149,6 +150,7 @@ export function createStreamTextOptions(input: {
     experimental_include: createStreamExperimentalInclude(input),
   }) as AiSdkStreamTextOptions;
   assertProviderFacingRequestBudget(options, input.request.maxOutputTokens, input.resolved);
+  publishContextDiagnostics(input.request, providerFacing.diagnostics);
   return options;
 }
 
@@ -156,7 +158,9 @@ function createProviderFacingMessagesAndTools(input: {
   providerOptions?: Record<string, unknown>;
   request: AiSdkModelTextRequest;
   resolved: ResolvedAiSdkModel;
-}): Pick<AiSdkGenerateTextOptions, "messages" | "tools"> {
+}): Pick<AiSdkGenerateTextOptions, "messages" | "tools"> & {
+  diagnostics: ModelRequestContextDiagnostics;
+} {
   const messages = toAiSdkMessages(input.request.messages, {
     apiFormat: resolveProviderApiFormat(input.providerOptions),
     providerOptions: input.providerOptions,
@@ -177,7 +181,54 @@ function createProviderFacingMessagesAndTools(input: {
     toolChoice: input.request.toolChoice,
     toolContracts: input.request.tools,
   });
-  return { messages, tools: admission.tools };
+  return {
+    messages,
+    tools: admission.tools,
+    diagnostics: buildModelRequestContextDiagnostics(admission),
+  };
+}
+
+function buildModelRequestContextDiagnostics(
+  admission: ReturnType<typeof admitProviderFacingTools>,
+): ModelRequestContextDiagnostics {
+  const candidateBudget = admission.candidateBudget;
+  const admittedBudget = admission.admittedBudget;
+  return {
+    candidateToolCount: admission.candidateToolCount,
+    admittedToolCount: admission.admittedToolCount,
+    omittedToolCount: admission.omittedToolCount,
+    ...(candidateBudget
+      ? {
+          candidateEstimatedInputTokens: candidateBudget.estimatedInputTokens,
+          candidateRemainingInputTokens: candidateBudget.remainingInputTokens,
+        }
+      : {}),
+    ...(admittedBudget
+      ? {
+          contextWindow: admittedBudget.contextWindow,
+          requestedOutputTokens: admittedBudget.requestedOutputTokens,
+          safetyMarginTokens: admittedBudget.safetyMarginTokens,
+          allowedInputTokens: admittedBudget.allowedInputTokens,
+          estimatedMessageTokens: admittedBudget.estimatedMessageTokens,
+          estimatedToolTokens: admittedBudget.estimatedToolTokens,
+          estimatedFramingTokens: admittedBudget.estimatedFramingTokens,
+          estimatedInputTokens: admittedBudget.estimatedInputTokens,
+          remainingInputTokens: admittedBudget.remainingInputTokens,
+          fits: admittedBudget.fits,
+        }
+      : {}),
+  };
+}
+
+function publishContextDiagnostics(
+  request: AiSdkModelTextRequest,
+  diagnostics: ModelRequestContextDiagnostics,
+): void {
+  try {
+    request.contextDiagnosticsSink?.(diagnostics);
+  } catch {
+    // Observability must never alter provider request semantics.
+  }
 }
 
 function assertProviderFacingRequestBudget(

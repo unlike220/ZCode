@@ -218,6 +218,10 @@ export async function runRegularTurnLoop(
       sourceEntries: providerProjection.sourceEntries,
       requestEntries,
       recordedMessages: recordableProjection.messages,
+      toolExposureDiagnostics: {
+        eligibleToolCount: availableTools.length,
+        exposedToolCount: tools.length,
+      },
       tools,
     });
 

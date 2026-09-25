@@ -489,6 +489,28 @@ export const zcodeContextUsageBreakdownItemSchema = z
   .strict();
 export type ZCodeContextUsageBreakdownItem = z.infer<typeof zcodeContextUsageBreakdownItemSchema>;
 export const zcodeContextUsageBreakdownSchema = z.array(zcodeContextUsageBreakdownItemSchema);
+export const zcodeContextDiagnosticsSchema = z
+  .object({
+    eligibleToolCount: z.number().int().nonnegative().optional(),
+    exposedToolCount: z.number().int().nonnegative().optional(),
+    candidateToolCount: z.number().int().nonnegative(),
+    admittedToolCount: z.number().int().nonnegative(),
+    omittedToolCount: z.number().int().nonnegative(),
+    candidateEstimatedInputTokens: z.number().int().nonnegative().optional(),
+    candidateRemainingInputTokens: z.number().int().optional(),
+    contextWindow: z.number().int().positive().optional(),
+    requestedOutputTokens: z.number().int().nonnegative().optional(),
+    safetyMarginTokens: z.number().int().nonnegative().optional(),
+    allowedInputTokens: z.number().int().nonnegative().optional(),
+    estimatedMessageTokens: z.number().int().nonnegative().optional(),
+    estimatedToolTokens: z.number().int().nonnegative().optional(),
+    estimatedFramingTokens: z.number().int().nonnegative().optional(),
+    estimatedInputTokens: z.number().int().nonnegative().optional(),
+    remainingInputTokens: z.number().int().optional(),
+    fits: z.boolean().optional(),
+  })
+  .strict();
+export type ZCodeContextDiagnostics = z.infer<typeof zcodeContextDiagnosticsSchema>;
 export const zcodeSessionContextUsageSchema = z
   .object({
     used: z.number().int().nonnegative(),
@@ -503,6 +525,7 @@ export const zcodeSessionContextUsageSchema = z
       .optional(),
     cache: zcodeSessionContextCacheUsageSchema.optional(),
     breakdown: zcodeContextUsageBreakdownSchema.optional(),
+    diagnostics: zcodeContextDiagnosticsSchema.optional(),
   })
   .strict();
 export const zcodeSessionRuntimeStateSchema = z

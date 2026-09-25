@@ -125,6 +125,7 @@ function sessionUsageSeedFromRuntimeContextUsage(
       autoCompactThresholdTokens: null,
       ...(contextUsage.cache ? { cache: contextUsage.cache } : {}),
       ...(contextUsage.breakdown ? { breakdown: contextUsage.breakdown } : {}),
+      ...(contextUsage.diagnostics ? { diagnostics: contextUsage.diagnostics } : {}),
     },
   };
 }

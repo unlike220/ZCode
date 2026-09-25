@@ -27,6 +27,7 @@ import type {
 } from "../interfaces/session.port.js";
 import type {
   ModelNetworkStatusEvent,
+  ModelRequestContextDiagnostics,
   ModelSelection,
   ModelUsage,
   ModelUsageSummary,
@@ -776,6 +777,8 @@ export interface ModelCompletePayload {
   };
   content: string;
   contextUsageBreakdown?: ContextUsageBreakdownItem[];
+  /** Bounded local preflight / tool-pipeline diagnostics for the latest main-turn request. */
+  contextDiagnostics?: ModelRequestContextDiagnostics;
   contextWindow?: number;
   fileChanges?: TurnFileChangeSummary;
   querySource?: string;

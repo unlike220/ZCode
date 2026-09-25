@@ -145,6 +145,20 @@ function areTaskUsageBreakdownsEqual(
   );
 }
 
+function areTaskUsageDiagnosticsEqual(
+  left: TaskUsageState["diagnostics"] | undefined,
+  right: TaskUsageState["diagnostics"] | undefined,
+): boolean {
+  if (left === right) return true;
+  if (!left || !right) return false;
+  const keys = new Set([...Object.keys(left), ...Object.keys(right)]);
+  for (const key of keys) {
+    const typedKey = key as keyof NonNullable<TaskUsageState["diagnostics"]>;
+    if (left[typedKey] !== right[typedKey]) return false;
+  }
+  return true;
+}
+
 function areTaskUsageStatesEqual(
   left: TaskUsageState | null,
   right: TaskUsageState | null,
@@ -160,7 +174,8 @@ function areTaskUsageStatesEqual(
     left.used === right.used &&
     areTaskUsageCostsEqual(left.cost, right.cost) &&
     areTaskUsageCachesEqual(left.cache, right.cache) &&
-    areTaskUsageBreakdownsEqual(left.breakdown, right.breakdown)
+    areTaskUsageBreakdownsEqual(left.breakdown, right.breakdown) &&
+    areTaskUsageDiagnosticsEqual(left.diagnostics, right.diagnostics)
   );
 }
 

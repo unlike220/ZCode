@@ -21,6 +21,7 @@ import {
   type ZCodeElicitationRequest,
   type ZCodeBackgroundTaskControlItem,
   type ZCodeSessionActiveTurnKind,
+  type ZCodeContextDiagnostics,
   type ZCodeContextUsageBreakdownItem,
   type InputId,
   type SessionCreateSource,
@@ -86,6 +87,8 @@ export interface TaskUsageState {
   cache?: ZCodeContextCacheUsage;
   /** Agent 按来源估算的上下文字符量，只用于 context usage 弹窗比例展示。 */
   breakdown?: ZCodeContextUsageBreakdownItem[];
+  /** 本地 preflight / tool exposure 诊断；与 provider usage token 口径分开展示。 */
+  diagnostics?: ZCodeContextDiagnostics;
 }
 
 export interface ElicitationAnswerDraft {

@@ -87,6 +87,7 @@ import {
   type ZCodeWorkspaceTaskListChanged,
   type InputId,
   type TraceId,
+  zcodeContextDiagnosticsSchema,
   zcodeContextUsageBreakdownSchema,
   zcodeSessionSettingsStateSchema,
   type ZCodeDeliveryKind,
@@ -5267,6 +5268,7 @@ function mapSessionInfoLikePayload(
       cost: contextUsage.cost ?? null,
       ...(contextUsage.cache ? { cache: contextUsage.cache } : {}),
       ...(contextUsage.breakdown ? { breakdown: contextUsage.breakdown } : {}),
+      ...(contextUsage.diagnostics ? { diagnostics: contextUsage.diagnostics } : {}),
     });
   }
   const title = stringValue(payload.title);
@@ -5507,7 +5509,7 @@ function classifyAgentModelNetworkError(
 
 type ContextUsageUpdate = Pick<
   Extract<ZCodeStreamEvent, { type: "usage_update" }>,
-  "used" | "size" | "cost" | "cache" | "breakdown"
+  "used" | "size" | "cost" | "cache" | "breakdown" | "diagnostics"
 >;
 
 function contextUsageFromProjection(
@@ -5537,6 +5539,7 @@ function contextUsageFromRuntime(
     cost: runtimeUsage.cost ?? null,
     ...(runtimeUsage.cache ? { cache: runtimeUsage.cache } : {}),
     ...(runtimeUsage.breakdown ? { breakdown: runtimeUsage.breakdown } : {}),
+    ...(runtimeUsage.diagnostics ? { diagnostics: runtimeUsage.diagnostics } : {}),
   };
 }
 
@@ -5568,6 +5571,7 @@ function contextUsageFromPayload(payload: Record<string, unknown>): ContextUsage
     cost: null,
     ...(useModelUsageForContext ? optionalContextCacheUsageFromPayload(payload, usage) : {}),
     ...(useModelUsageForContext ? optionalContextUsageBreakdownFromPayload(payload) : {}),
+    ...(useModelUsageForContext ? optionalContextDiagnosticsFromPayload(payload) : {}),
   };
 }
 
@@ -5576,6 +5580,13 @@ function optionalContextUsageBreakdownFromPayload(
 ): Pick<ContextUsageUpdate, "breakdown"> {
   const parsed = zcodeContextUsageBreakdownSchema.safeParse(payload.contextUsageBreakdown);
   return parsed.success && parsed.data.length > 0 ? { breakdown: parsed.data } : {};
+}
+
+function optionalContextDiagnosticsFromPayload(
+  payload: Record<string, unknown>,
+): Pick<ContextUsageUpdate, "diagnostics"> {
+  const parsed = zcodeContextDiagnosticsSchema.safeParse(payload.contextDiagnostics);
+  return parsed.success ? { diagnostics: parsed.data } : {};
 }
 
 function contextUsageTokensFromPayload(usage: Record<string, unknown>): number | undefined {

@@ -8,6 +8,7 @@
 import type { ZCodeBackgroundTaskControlItem } from "./background-task-controls.js";
 import type { ToolCallDisplay } from "./zcode-protocol-v4/toolDisplay.js";
 import type {
+  ZCodeContextDiagnostics,
   ZCodeContextUsageBreakdownItem,
   ZCodeInteractionRequestOrigin,
   ZCodePermissionResponse,
@@ -908,6 +909,8 @@ export interface ZCodeUsageUpdate {
   cache?: ZCodeContextCacheUsage;
   /** Agent 按来源估算的上下文字符量，用于 UI 展示比例，不作为 token 账本。 */
   breakdown?: ZCodeContextUsageBreakdownItem[];
+  /** 本地 preflight / tool exposure 诊断；只含有界标量，不含 prompt/schema 正文。 */
+  diagnostics?: ZCodeContextDiagnostics;
 }
 /** Agent runtime 上报的后台任务控制项；只表示当前 host 内存态，不写入 session 文件。 */
 export interface ZCodeBackgroundTaskControlItemsUpdate {
@@ -995,6 +998,7 @@ export interface ZCodeSessionRuntimeSnapshot {
     cost?: { amount: number; currency: string } | null;
     cache?: ZCodeContextCacheUsage;
     breakdown?: ZCodeContextUsageBreakdownItem[];
+    diagnostics?: ZCodeContextDiagnostics;
   };
   streamWatermark?: TaskStreamWatermark;
   pendingCommands?: ZCodeTaskRuntimeCommand[];

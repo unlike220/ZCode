@@ -49,13 +49,16 @@ export function buildTaskContextUsageFromUsageUpdate(
   params: BuildTaskContextUsageUpdateParams,
 ): TaskUsageState {
   const { currentUsage, incomingUsage, latestUserPrompt } = params;
+  const sameSnapshot =
+    currentUsage?.used === incomingUsage.used && currentUsage.size === incomingUsage.size;
   const usageWithRetainedBreakdown =
-    !incomingUsage.breakdown &&
-    currentUsage?.breakdown &&
-    currentUsage.used === incomingUsage.used &&
-    currentUsage.size === incomingUsage.size
+    !incomingUsage.breakdown && currentUsage?.breakdown && sameSnapshot
       ? { ...incomingUsage, breakdown: currentUsage.breakdown }
       : incomingUsage;
+  const usageWithRetainedDiagnostics =
+    !usageWithRetainedBreakdown.diagnostics && currentUsage?.diagnostics && sameSnapshot
+      ? { ...usageWithRetainedBreakdown, diagnostics: currentUsage.diagnostics }
+      : usageWithRetainedBreakdown;
   if (
     currentUsage &&
     Number.isFinite(currentUsage.used) &&
@@ -71,7 +74,7 @@ export function buildTaskContextUsageFromUsageUpdate(
     return currentUsage;
   }
 
-  return usageWithRetainedBreakdown;
+  return usageWithRetainedDiagnostics;
 }
 
 export function buildPromptCompletionUsageFallback(

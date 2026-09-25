@@ -4,8 +4,10 @@ import {
   getZCodeGoalActiveIterationCount,
   zcodeApiRetryFromModelNetworkStatusPayload,
   zcodeApiRetryFromStreamRecoveryPayload,
+  zcodeContextDiagnosticsSchema,
   zcodeContextUsageBreakdownSchema,
   type ZCodeActiveToolCall,
+  type ZCodeContextDiagnostics,
   type ZCodeContextUsageBreakdownItem,
   type ZCodeDeliveryKind,
   type ZCodePendingPermission,
@@ -587,7 +589,8 @@ function mapRuntimeState(input: {
 }
 
 interface ContextUsageBreakdownCandidate {
-  breakdown: ZCodeContextUsageBreakdownItem[];
+  breakdown?: ZCodeContextUsageBreakdownItem[];
+  diagnostics?: ZCodeContextDiagnostics;
   contextWindow?: number;
   used: number;
 }
@@ -622,10 +625,12 @@ function applyContextUsageBreakdown(
   contextUsage: ZCodeSessionContextUsage | undefined,
   candidate: ContextUsageBreakdownCandidate | undefined,
 ): ZCodeSessionContextUsage | undefined {
-  if (!contextUsage || !candidate || candidate.breakdown.length === 0) {
+  if (!contextUsage || !candidate) {
     return contextUsage;
   }
-  if (contextUsage.breakdown && contextUsage.breakdown.length > 0) {
+  const hasBreakdown = Boolean(candidate.breakdown && candidate.breakdown.length > 0);
+  const hasDiagnostics = candidate.diagnostics !== undefined;
+  if (!hasBreakdown && !hasDiagnostics) {
     return contextUsage;
   }
   if (candidate.used !== contextUsage.used) {
@@ -636,7 +641,10 @@ function applyContextUsageBreakdown(
   }
   return {
     ...contextUsage,
-    breakdown: candidate.breakdown,
+    ...(contextUsage.breakdown || !candidate.breakdown ? {} : { breakdown: candidate.breakdown }),
+    ...(contextUsage.diagnostics || !candidate.diagnostics
+      ? {}
+      : { diagnostics: candidate.diagnostics }),
   };
 }
 
@@ -653,16 +661,23 @@ function latestContextUsageBreakdownFromEvents(
     if (querySource !== undefined && querySource !== "main_turn") {
       continue;
     }
-    const parsed = zcodeContextUsageBreakdownSchema.safeParse(payload.contextUsageBreakdown);
+    const parsedBreakdown = zcodeContextUsageBreakdownSchema.safeParse(
+      payload.contextUsageBreakdown,
+    );
+    const parsedDiagnostics = zcodeContextDiagnosticsSchema.safeParse(payload.contextDiagnostics);
+    const breakdown =
+      parsedBreakdown.success && parsedBreakdown.data.length > 0 ? parsedBreakdown.data : undefined;
+    const diagnostics = parsedDiagnostics.success ? parsedDiagnostics.data : undefined;
     const used = getModelUsageContextTokens(payload.usage);
-    if (!parsed.success || parsed.data.length === 0 || used === undefined) {
+    if ((!breakdown && !diagnostics) || used === undefined) {
       continue;
     }
     const contextWindow = positiveInteger(payload.contextWindow);
-    // 冷恢复只能从 eventStore 重建 context breakdown；必须用 usage/window 对齐，
-    // 避免把旧分支或 sidecar 模型请求的来源比例挂到当前 task meter 上。
+    // 冷恢复只能从 eventStore 重建 context breakdown/diagnostics；必须用 usage/window 对齐，
+    // 避免把旧分支或 sidecar 模型请求的诊断挂到当前 task meter 上。
     return {
-      breakdown: parsed.data,
+      ...(breakdown ? { breakdown } : {}),
+      ...(diagnostics ? { diagnostics } : {}),
       ...(contextWindow !== undefined ? { contextWindow } : {}),
       used,
     };

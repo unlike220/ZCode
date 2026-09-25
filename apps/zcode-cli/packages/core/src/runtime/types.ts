@@ -35,6 +35,7 @@ import type {
   MessageVisibility,
   FilePartSource,
   ModelRequestAdmission,
+  ModelRequestContextDiagnostics,
   Model,
   ModelNetworkStatusEvent,
   ModelMessageContentBlock,
@@ -813,6 +814,11 @@ export interface ProviderContextUsageSnapshot {
 
 export interface RunModelTextRequestOptions {
   abortSignal?: AbortSignal;
+  /** Context Fix #4 exposure counts for this model step; observational only. */
+  toolExposureDiagnostics?: {
+    eligibleToolCount: number;
+    exposedToolCount: number;
+  };
   assistantMessageId: MessageId;
   events: SessionEvent[];
   maxOutputTokens?: number;
@@ -846,6 +852,7 @@ export interface StreamedToolExecutionResult {
 
 export interface RuntimeModelTextResult {
   contextUsageBreakdown?: ContextUsageBreakdownItem[];
+  contextDiagnostics?: ModelRequestContextDiagnostics;
   finishReason: string;
   providerMetadata?: Record<string, unknown>;
   reasoning?: ModelReasoningContentBlock[];

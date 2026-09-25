@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type {
   ModelInputMessage,
+  ModelRequestContextDiagnostics,
   ModelToolAdmissionPriority,
   ModelToolContract,
 } from "@zcode/contracts";
@@ -216,6 +217,102 @@ test("required tool choice never becomes a provider request with zero tools", ()
 
   assert.deepEqual(Object.keys(result.tools ?? {}), ["GiantOptional"]);
   assert.equal(result.admittedBudget?.fits, false);
+});
+
+test("generate and stream publish the same bounded context diagnostics", () => {
+  const generateDiagnostics: ModelRequestContextDiagnostics[] = [];
+  const streamDiagnostics: ModelRequestContextDiagnostics[] = [];
+  const requestBase = {
+    maxOutputTokens: REQUESTED_OUTPUT,
+    messages: REQUEST_MESSAGES,
+    tools: [
+      { ...contract("Read", "mandatory"), description: "read" },
+      {
+        ...contract("CreateWorkflow", "optional"),
+        description: "workflow ".repeat(8_000),
+      },
+    ],
+  };
+  const resolved = modelResolution(2_500);
+
+  createGenerateTextOptions({
+    includeModelIO: false,
+    request: {
+      ...requestBase,
+      contextDiagnosticsSink: (diagnostics) => generateDiagnostics.push(diagnostics),
+    } as never,
+    resolved,
+    statusContext: statusContext(),
+  });
+  createStreamTextOptions({
+    includeModelIO: false,
+    request: {
+      ...requestBase,
+      contextDiagnosticsSink: (diagnostics) => streamDiagnostics.push(diagnostics),
+    } as never,
+    resolved,
+    statusContext: statusContext(),
+  });
+
+  assert.equal(generateDiagnostics.length, 1);
+  assert.deepEqual(streamDiagnostics, generateDiagnostics);
+  const diagnostics = generateDiagnostics[0];
+  assert.ok(diagnostics);
+  assert.equal(diagnostics.candidateToolCount, 2);
+  assert.equal(diagnostics.admittedToolCount, 1);
+  assert.equal(diagnostics.omittedToolCount, 1);
+  assert.equal(diagnostics.contextWindow, 2_500);
+  assert.equal(diagnostics.requestedOutputTokens, REQUESTED_OUTPUT);
+  assert.equal(diagnostics.fits, true);
+  assert.ok((diagnostics.estimatedInputTokens ?? 0) > 0);
+  assert.ok((diagnostics.remainingInputTokens ?? -1) >= 0);
+  assert.equal("omittedToolNames" in diagnostics, false);
+});
+
+test("context diagnostics hook is runtime-only and never provider-visible", () => {
+  const requestBase = {
+    maxOutputTokens: REQUESTED_OUTPUT,
+    messages: REQUEST_MESSAGES,
+    tools: [{ ...contract("Read", "mandatory"), description: "read" }],
+  };
+  const resolved = modelResolution(50_000);
+  const baseline = createGenerateTextOptions({
+    includeModelIO: false,
+    request: requestBase as never,
+    resolved,
+    statusContext: statusContext(),
+  });
+  const withObserver = createGenerateTextOptions({
+    includeModelIO: false,
+    request: {
+      ...requestBase,
+      contextDiagnosticsSink: () => undefined,
+    } as never,
+    resolved,
+    statusContext: statusContext(),
+  });
+
+  assert.equal("contextDiagnosticsSink" in withObserver, false);
+  assert.equal(JSON.stringify(withObserver).includes("contextDiagnosticsSink"), false);
+  assert.equal(JSON.stringify(withObserver), JSON.stringify(baseline));
+});
+
+test("context diagnostics observer failures never alter request construction", () => {
+  const options = createGenerateTextOptions({
+    includeModelIO: false,
+    request: {
+      maxOutputTokens: REQUESTED_OUTPUT,
+      messages: REQUEST_MESSAGES,
+      tools: [{ ...contract("Read", "mandatory"), description: "read" }],
+      contextDiagnosticsSink: () => {
+        throw new Error("observer failure");
+      },
+    } as never,
+    resolved: modelResolution(50_000),
+    statusContext: statusContext(),
+  });
+
+  assert.deepEqual(Object.keys(options.tools ?? {}), ["Read"]);
 });
 
 test("generate and stream requests use the same admission policy", () => {

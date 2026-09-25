@@ -6,6 +6,7 @@ import { sharedContextImportStateSchema } from "./shared-context-import.js";
 export { sharedContextImportStateSchema } from "./shared-context-import.js";
 import { conversationInputDispatchSchema, conversationInputIntentSchema } from "./input-intent.js";
 import {
+  zcodeContextDiagnosticsSchema,
   zcodeContextUsageBreakdownSchema,
   zcodeInteractionRequestOriginSchema,
   zcodePermissionResponseSchema,
@@ -194,6 +195,7 @@ export const sessionUsageStateSchema = z.object({
       autoCompactThresholdTokens: z.number().nullable(),
       cache: zcodeSessionContextCacheUsageSchema.optional(),
       breakdown: zcodeContextUsageBreakdownSchema.optional(),
+      diagnostics: zcodeContextDiagnosticsSchema.optional(),
     })
     .nullable(),
   cumulative: z.object({

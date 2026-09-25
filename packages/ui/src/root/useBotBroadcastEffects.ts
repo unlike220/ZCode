@@ -205,6 +205,7 @@ export function useBotBroadcastEffects(
                 cost: event.cost,
                 ...(event.cache ? { cache: event.cache } : {}),
                 ...(event.breakdown ? { breakdown: event.breakdown } : {}),
+                ...(event.diagnostics ? { diagnostics: event.diagnostics } : {}),
               };
               const nextUsage = buildTaskContextUsageFromUsageUpdate({
                 currentUsage: previousUsage,
