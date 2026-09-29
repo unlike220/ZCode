@@ -1628,6 +1628,9 @@ export const zcodeUsageStatsResultSchema = appUsageSnapshotSchema;
 export const zcodeTaskTokenUsageParamsSchema = z
   .object({
     sessionId: nonEmptyString,
+    // additive：按 prompt traceId 过滤（automation run 的 prompt traceId 即 runId）。
+    // 缺省保持既有会话级聚合；旧 CLI 不认识该字段时由调用方按失败降级。
+    traceId: nonEmptyString.optional(),
   })
   .strict();
 export const zcodeTaskTokenUsageResultSchema = z
@@ -3346,6 +3349,15 @@ export const zcodeAutomationIntervalUnitSchema = z.enum([
   "yearly",
 ]);
 
+/** automation 的 token 预算；窗口取 UTC 日历桶，语义见 packages/services/specs/automation-budget-control.md。 */
+export const zcodeAutomationBudgetSchema = z
+  .object({
+    limitTokens: z.number().int().positive(),
+    window: z.enum(["day", "month", "lifetime"]),
+  })
+  .strict();
+export type ZCodeAutomationBudgetProtocol = z.infer<typeof zcodeAutomationBudgetSchema>;
+
 export const zcodeAutomationProtocolSchema = z
   .object({
     automationId: nonEmptyString,
@@ -3365,6 +3377,7 @@ export const zcodeAutomationProtocolSchema = z
     // 自定义重复规则；缺省时调度回退到解析 cronExpr。会话卡片必须读到本字段才能展示
     // cron 无法表达的真实间隔（如每50小时、每40天，兼容 cronExpr 只是 0 * * * *）。
     scheduleRule: zcodeAutomationScheduleRuleSchema.optional(),
+    budget: zcodeAutomationBudgetSchema.optional(),
   })
   .strict();
 export type ZCodeAutomationProtocol = z.infer<typeof zcodeAutomationProtocolSchema>;
@@ -3381,6 +3394,7 @@ export const zcodeAutomationCreateParamsSchema = z
     botDeliveryTarget: zcodeAutomationBotDeliveryTargetSchema.optional(),
     recurring: z.boolean().optional(),
     maxRuns: z.number().int().positive().optional(),
+    budget: zcodeAutomationBudgetSchema.optional(),
     // 会话侧自定义重复 carrier：每 N 分钟/小时/天/周/月/年均通过此字段归一化为权威 scheduleRule，
     // cronExpr 仅作合法兼容展示。
     intervalUnit: zcodeAutomationIntervalUnitSchema.optional(),
@@ -3420,6 +3434,7 @@ export const zcodeAutomationUpdateParamsSchema = z
     prompt: nonEmptyString.optional(),
     recurring: z.boolean().optional(),
     maxRuns: z.number().int().positive().nullable().optional(),
+    budget: zcodeAutomationBudgetSchema.nullable().optional(),
     // 会话侧自定义重复 carrier（同 create 侧语义）。
     intervalUnit: zcodeAutomationIntervalUnitSchema.optional(),
     interval: z.number().int().min(1).max(200).optional(),
@@ -3432,6 +3447,7 @@ export const zcodeAutomationUpdateParamsSchema = z
       input.prompt !== undefined ||
       input.recurring !== undefined ||
       input.maxRuns !== undefined ||
+      input.budget !== undefined ||
       input.intervalUnit !== undefined,
     { message: "automation update requires at least one field" },
   )

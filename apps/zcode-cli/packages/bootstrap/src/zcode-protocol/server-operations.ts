@@ -2927,6 +2927,8 @@ export async function getTaskTokenUsage(
 
   const usage = await usageStore.queryTaskUsage({
     sessionID: params.sessionId as SessionId,
+    // additive：traceId 过滤（automation 预算按单条 run 聚合）；缺省为会话级聚合。
+    ...(params.traceId ? { traceID: params.traceId } : {}),
   });
   return {
     sessionId: params.sessionId,

@@ -3665,10 +3665,14 @@ export function createZCodeAgentService(
     async getTaskTokenUsage(params: ZCodeAgentTaskTokenUsageParams) {
       const client = await getReadOnlyClient(params);
       // session/usage → v4/conversation/usage（同上；task 是 UI 投影概念，
-      // v4 名字空间落位 conversation）。
+      // v4 名字空间落位 conversation）。traceId 为 additive 过滤：
+      // automation 预算按 prompt traceId（=runId）聚合单条 run 的用量。
       return client.request(
         V4_METHODS.conversationUsage,
-        { sessionId: params.sessionId },
+        {
+          sessionId: params.sessionId,
+          ...(params.traceId ? { traceId: params.traceId } : {}),
+        },
         v4ConversationUsageResultSchema,
       );
     },
@@ -4271,6 +4275,7 @@ export function createZCodeAgentService(
         maxRuns: params.maxRuns,
         endAt: params.endAt,
         scheduleRule: params.scheduleRule,
+        budget: params.budget,
       });
     },
 
@@ -4287,6 +4292,7 @@ export function createZCodeAgentService(
           maxRuns: params.maxRuns,
           endAt: params.endAt,
           scheduleRule: params.scheduleRule,
+          budget: params.budget,
           scheduleEditedByUser: params.scheduleEditedByUser,
         },
         // 归属校验：写操作必须限定在调用方当前 workspace，禁止跨 workspace 越权。

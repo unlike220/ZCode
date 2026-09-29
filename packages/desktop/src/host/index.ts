@@ -60,6 +60,9 @@ import {
   buildTaskChangeSummary,
   createHostApiNetworkTransport,
   createSettingServiceWithMigrations,
+  createDefaultReadOnlyAutomationSigningKeyProvider,
+  AutomationIntentSignatureMismatchError,
+  verifyAutomationExecutionSignature,
   OffPeakModelUnavailableError,
   OffPeakPermanentDispatchError,
   type HostApiNetworkTransport,
@@ -131,9 +134,11 @@ import { initializeHostApiNetworkTransportOwner } from "./hostInitialization.js"
 import { createHostUncaughtExceptionHandler } from "./hostUncaughtExceptionGuard.js";
 import {
   recordCronRunOutcomeBestEffort,
+  recordCronRunSpendBestEffort,
   startManualClaimHeartbeat,
   settleCronRunTerminalOutcome,
   settleManualDispatchFailureBestEffort,
+  type CronRunSpendUsageSource,
 } from "./cronRunLifecycle.js";
 import {
   createRemotePromptAttachmentSessionService,
@@ -795,6 +800,7 @@ async function applyCronRunConfigToExistingTask(params: {
 
 function trackCronRunOutcome(params: {
   zcodeTaskService: IZCodeTaskService;
+  usageSource: CronRunSpendUsageSource | null;
   taskId: string;
   traceId: TraceId;
   workspacePath: string;
@@ -816,6 +822,20 @@ function trackCronRunOutcome(params: {
         outcome: result.outcome,
         error: result.error,
         repo: cronAutomationRepo,
+        logWarn: (message, error) => logger.warn(message, error),
+      });
+      // 预算 spend 的事实来源：终态后按 traceId=runId 回写该 run 的用量（best-effort）。
+      void recordCronRunSpendBestEffort({
+        runId: params.runId,
+        automationId: params.automationId,
+        workspaceKey: params.workspaceKey,
+        scheduledAt: params.scheduledAt,
+        trigger: params.trigger,
+        sessionId: params.taskId,
+        workspacePath: params.workspacePath,
+        ...(params.workspaceIdentity ? { workspaceIdentity: params.workspaceIdentity } : {}),
+        repo: cronAutomationRepo,
+        usage: params.usageSource,
         logWarn: (message, error) => logger.warn(message, error),
       });
       // 定时任务在后台完成后统一置为未读，真正打开 task 时再由导航链路清除。
@@ -845,6 +865,40 @@ function trackCronRunOutcome(params: {
 }
 
 /**
+ * 执行意图签名校验（见 packages/services/specs/automation-execution-integrity.md）：
+ * - 存储行带签名 → 行内意图字段必须与签名一致（检出库外篡改），且派发请求的 prompt 必须
+ *   与被签名的存储 prompt 一致；
+ * - 请求 prompt 与存储不一致但行签名有效 → 认领到派发之间用户刚编辑过（良性竞态），
+ *   按 transient 失败重试，重试会以新意图重新认领，绝不执行过期 prompt；
+ * - 行签名无效 → 篡改/密钥丢失，permanent 失败，run 永不执行；
+ * - legacy 无签名行 → 放行并告警，下一次管理写入会补签。
+ */
+const automationIntentKeyProvider = createDefaultReadOnlyAutomationSigningKeyProvider();
+
+async function assertAutomationExecutionIntent(request: CronRunDispatchRequest): Promise<void> {
+  const intent = await cronAutomationRepo.getExecutionIntent(request.automationId);
+  if (!intent) return; // automation 已删除：交由后续派发路径按既有语义失败。
+  if (!intent.executionSignature) {
+    logger.warn(
+      `automation execution intent unsigned (legacy row), dispatching without verification automation=${request.automationId}`,
+    );
+    return;
+  }
+  const key = await automationIntentKeyProvider.getKey();
+  const signatureValid = verifyAutomationExecutionSignature(intent, intent.executionSignature, key);
+  if (!signatureValid) {
+    throw new AutomationIntentSignatureMismatchError(
+      `stored row intent does not match its signature automation=${request.automationId}`,
+    );
+  }
+  if (request.prompt !== intent.prompt) {
+    throw new Error(
+      `Automation prompt changed since this run was claimed; retrying with the current intent automation=${request.automationId}`,
+    );
+  }
+}
+
+/**
  * 把一次 cron/manual run 直接提交给当前 host 的 V4 task service。
  * 会话内 automation 可能绑定到未激活 session，必须先恢复再应用保存的运行参数。
  */
@@ -852,6 +906,7 @@ async function dispatchCronRun(request: CronRunDispatchRequest): Promise<{
   taskId: string;
   sessionId: string;
 }> {
+  await assertAutomationExecutionIntent(request);
   const targetServices = resolveAutomationTargetServices(request);
   const zcodeTaskService = targetServices.getOptional(IZCodeTaskService);
   if (!zcodeTaskService) {
@@ -941,6 +996,8 @@ async function dispatchCronRun(request: CronRunDispatchRequest): Promise<{
     trackedKey = cronRunSubscriptionKey(task.taskId, promptTraceId);
     trackCronRunOutcome({
       zcodeTaskService,
+      // 预算 spend 记账走 agent 服务的用量查询；缺省（不可用）时记账降级为 under-count。
+      usageSource: targetServices.getOptional(IZCodeAgentService) ?? null,
       taskId: task.taskId,
       traceId: promptTraceId,
       workspacePath: request.workspacePath,
@@ -2387,7 +2444,10 @@ parentPort.on("message", async (e: Electron.MessageEvent) => {
           runId: msg.runId,
           ok: false,
           error: error instanceof Error ? error.message : String(error),
-          failureKind: "transient",
+          // 签名校验失败是确定性拒绝（篡改/密钥丢失）：重试不会自愈，交给 scheduler
+          // 转 failed；其它派发错误保持 transient 退避语义。
+          failureKind:
+            error instanceof AutomationIntentSignatureMismatchError ? "permanent" : "transient",
         });
       }
     })();

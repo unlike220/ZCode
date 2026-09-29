@@ -2,6 +2,7 @@ export type AutomationEditDirtyField =
   | "title"
   | "prompt"
   | "schedule"
+  | "budget"
   | "mode"
   | "thoughtLevel"
   | "model";

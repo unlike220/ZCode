@@ -1052,6 +1052,8 @@ export interface AppUsageQueryResult {
 
 export interface TaskUsageQueryInput {
   sessionID: SessionId;
+  /** additive：可选 prompt traceId 过滤（automation run 的 prompt traceId 即 runId）。缺省为会话级聚合。 */
+  traceID?: string;
 }
 
 export interface TaskUsageQueryResult {

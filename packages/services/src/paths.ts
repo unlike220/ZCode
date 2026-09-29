@@ -187,6 +187,15 @@ export function getTasksIndexDatabasePath(): string {
   return join(getAppConfigDir(), "tasks-index.sqlite");
 }
 
+/**
+ * ~/.zcode/v2/automation-signing.key：automation 执行意图 HMAC 签名密钥（32 字节）。
+ * 仅本机使用：0600 权限、懒创建一次、永不日志/同步/上报。删除后旧签名无法验证，
+ * 相关 automation 会按 fail-closed 阻断派发，重新保存即可按当前密钥重签。
+ */
+export function getAutomationSigningKeyPath(): string {
+  return join(getAppConfigDir(), "automation-signing.key");
+}
+
 /** workspace 级身份键：远程优先使用 workspaceIdentity，本地回退 workspacePath。 */
 function getWorkspaceKey(workspacePath: string, workspaceIdentity?: string): string {
   return workspaceIdentity?.trim() || workspacePath;

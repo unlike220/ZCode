@@ -3,8 +3,10 @@ import { create } from "zustand";
 import {
   AUTOMATION_CREATE_LIMIT,
   AUTOMATION_CREATE_LIMIT_ERROR_CODE,
+  isAutomationBudgetExhaustedError,
   isAutomationCreateLimitError,
   type ZCodeAutomation,
+  type ZCodeAutomationBudget,
   type ZCodeAutomationRun,
   type ZCodeAutomationScheduleRule,
   type ModelSelection,
@@ -34,6 +36,8 @@ export interface CreateAutomationInput {
   maxRuns?: number;
   endAt?: number;
   scheduleRule?: ZCodeAutomationScheduleRule;
+  /** 可选 token 预算；语义见 packages/services/specs/automation-budget-control.md。 */
+  budget?: ZCodeAutomationBudget;
   // 目标项目;缺省用 store 当前列表所在项目。创建整页可在项目下拉里改。
   workspacePath?: string;
   workspaceIdentity?: string;
@@ -49,6 +53,8 @@ export interface UpdateAutomationInput {
   maxRuns?: number | null;
   endAt?: number | null;
   scheduleRule?: ZCodeAutomationScheduleRule | null;
+  /** undefined=不修改；null=清除预算（不再门控）。 */
+  budget?: ZCodeAutomationBudget | null;
   scheduleEditedByUser?: boolean;
 }
 
@@ -445,6 +451,8 @@ export const useAutomationManagementStore = create<AutomationManagementState>((s
       logger.error("[automations] runNow failed", {
         automationId,
         error: toMessage(error),
+        // 预算耗尽是预期拒绝（hard stop），与真实派发异常区分开便于 UI/诊断过滤。
+        ...(isAutomationBudgetExhaustedError(error) ? { budgetExhausted: true } : {}),
       });
       set({ error: toMessage(error) });
       return "failed";

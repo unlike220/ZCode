@@ -1,5 +1,6 @@
 import type {
   ZCodeAgentMcpServer,
+  ZCodeAutomationBudget,
   ZCodeAutomationScheduleRule,
   ZCodeMcpListMode,
   ModelSelection,
@@ -127,6 +128,7 @@ export interface ZCodeAgentCreateAutomationParams extends ZCodeAgentWorkspaceTar
   maxRuns?: number;
   endAt?: number;
   scheduleRule?: ZCodeAutomationScheduleRule;
+  budget?: ZCodeAutomationBudget;
 }
 
 export interface ZCodeAgentUpdateAutomationParams extends ZCodeAgentWorkspaceTarget {
@@ -140,6 +142,8 @@ export interface ZCodeAgentUpdateAutomationParams extends ZCodeAgentWorkspaceTar
   maxRuns?: number | null;
   endAt?: number | null;
   scheduleRule?: ZCodeAutomationScheduleRule | null;
+  /** undefined=不修改；null=清除预算（不再门控）。 */
+  budget?: ZCodeAutomationBudget | null;
   scheduleEditedByUser?: boolean;
 }
 

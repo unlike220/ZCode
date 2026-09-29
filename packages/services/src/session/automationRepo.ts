@@ -17,6 +17,7 @@ import {
   zcodeTaskModeSchema,
   type ZCodeAutomation,
   type ZCodeAutomationBotDeliveryTarget,
+  type ZCodeAutomationBudget,
   type ZCodeAutomationCreateParams,
   type ZCodeAutomationDispatchStatus,
   type ZCodeAutomationLifecycleStatus,
@@ -28,6 +29,12 @@ import {
   type ZCodeAutomationUpdateParams,
 } from "@zcode/shared";
 import { getTasksIndexDatabasePath } from "#src/paths.js";
+import {
+  automationIntentFromAutomation,
+  computeAutomationExecutionSignature,
+  createDefaultAutomationSigningKeyProvider,
+  type AutomationSigningKeyProvider,
+} from "#src/session/automationSigning.js";
 import { runTasksDatabaseMigrations } from "#src/session/tasksDatabase/migrations.js";
 
 const require = createRequire(import.meta.url);
@@ -53,6 +60,17 @@ export class AutomationCreateLimitError extends Error {
   }
 }
 
+/** getExecutionIntent 的返回：被签名的执行意图字段 + 当前签名（legacy 行签名缺省）。 */
+export interface AutomationExecutionIntentRecord {
+  automationId: string;
+  prompt: string;
+  cronExpr: string;
+  scheduleRule?: ZCodeAutomation["scheduleRule"];
+  maxRuns?: number;
+  endAt?: number;
+  executionSignature?: string;
+}
+
 interface AutomationRow {
   automation_id: string;
   title: string;
@@ -74,6 +92,9 @@ interface AutomationRow {
   end_at: number | null;
   schedule_rule: string | null;
   schedule_edited_by_user: number;
+  budget_limit_tokens: number | null;
+  budget_window: string | null;
+  execution_signature: string | null;
   run_count: number;
   scheduled_run_count: number;
   enabled: number;
@@ -113,6 +134,7 @@ interface ClaimedManualAutomationRun {
 
 function rowToAutomation(row: AutomationRow): ZCodeAutomation {
   const modelSelection = readAutomationModelSelection(row);
+  const budget = readAutomationBudget(row);
   return {
     automationId: row.automation_id,
     title: row.title,
@@ -133,6 +155,7 @@ function rowToAutomation(row: AutomationRow): ZCodeAutomation {
     scheduleRule: row.schedule_rule
       ? (JSON.parse(row.schedule_rule) as ZCodeAutomation["scheduleRule"])
       : undefined,
+    ...(budget ? { budget } : {}),
     ...(row.schedule_edited_by_user === 1 ? { scheduleEditedByUser: true } : {}),
     runCount: row.run_count,
     enabled: row.enabled === 1,
@@ -151,6 +174,26 @@ function rowToAutomation(row: AutomationRow): ZCodeAutomation {
 function readAutomationModelSelection(row: AutomationRow): ZCodeAutomation["modelSelection"] {
   // 旧字段只能经过独立 importer；新字段损坏或明确清空时不能复活旧选择。
   return readSerializedModelSelection(row.model_selection);
+}
+
+/** 预算两列必须成对；只写一列的历史/外部脏数据按未配置处理，不猜窗口。 */
+function readAutomationBudget(row: AutomationRow): ZCodeAutomationBudget | undefined {
+  if (
+    row.budget_limit_tokens === null ||
+    row.budget_window === null ||
+    !Number.isSafeInteger(row.budget_limit_tokens) ||
+    row.budget_limit_tokens <= 0
+  ) {
+    return undefined;
+  }
+  if (
+    row.budget_window !== "day" &&
+    row.budget_window !== "month" &&
+    row.budget_window !== "lifetime"
+  ) {
+    return undefined;
+  }
+  return { limitTokens: row.budget_limit_tokens, window: row.budget_window };
 }
 
 function serializeAutomationModelSelection(
@@ -238,6 +281,11 @@ export class AutomationRepo {
   constructor(
     dbPath?: string,
     private readonly startupBusyTimeoutMs = 5000,
+    /**
+     * 执行意图签名密钥提供者。默认走本机密钥文件（懒创建、0600）；create/update 时
+     * 按合并后的最终行重签（见 automation-execution-integrity.md）。测试注入静态密钥。
+     */
+    private readonly signingKeyProvider: AutomationSigningKeyProvider | null = createDefaultAutomationSigningKeyProvider(),
   ) {
     this.resolvedDbPath = dbPath?.trim() || null;
   }
@@ -333,26 +381,39 @@ export class AutomationRepo {
       if (Number(countRow.count) >= AUTOMATION_CREATE_LIMIT) {
         throw new AutomationCreateLimitError();
       }
+      // 签名覆盖合并后的最终行；create 的最终意图字段全部来自本次入参。
+      const executionSignature = await this.signExecutionIntent({
+        automationId,
+        prompt: params.prompt,
+        cronExpr: params.cronExpr,
+        scheduleRule: params.scheduleRule,
+        maxRuns: params.maxRuns,
+        endAt: params.endAt,
+      });
       db.prepare(
         `INSERT INTO automations (
-          automation_id, title, cron_expr, prompt, model, provider, model_selection,
-          workspace_key, workspace_path, workspace_identity, target_task_id, bot_delivery_target, location_kind,
-          recurring, max_runs, end_at, schedule_rule, schedule_edited_by_user,
-          run_count, enabled, lifecycle_status,
-          next_run_at, last_run_at, running, claimed_at,
-          dispatch_status, dispatch_attempts, retry_at, last_error,
-          mode, thought_level,
-          created_at, updated_at
-        ) VALUES (
-          @automation_id, @title, @cron_expr, @prompt, @model, @provider, @model_selection,
-          @workspace_key, @workspace_path, @workspace_identity, @target_task_id, @bot_delivery_target, 'local',
-          @recurring, @max_runs, @end_at, @schedule_rule, 0,
-          0, @enabled, @lifecycle_status,
-          @next_run_at, NULL, 0, NULL,
-          'idle', 0, NULL, NULL,
-          @mode, @thought_level,
-          @created_at, @updated_at
-        )`,
+            automation_id, title, cron_expr, prompt, model, provider, model_selection,
+            workspace_key, workspace_path, workspace_identity, target_task_id, bot_delivery_target, location_kind,
+            recurring, max_runs, end_at, schedule_rule, schedule_edited_by_user,
+            budget_limit_tokens, budget_window,
+            run_count, enabled, lifecycle_status,
+            next_run_at, last_run_at, running, claimed_at,
+            dispatch_status, dispatch_attempts, retry_at, last_error,
+            mode, thought_level,
+            execution_signature,
+            created_at, updated_at
+          ) VALUES (
+            @automation_id, @title, @cron_expr, @prompt, @model, @provider, @model_selection,
+            @workspace_key, @workspace_path, @workspace_identity, @target_task_id, @bot_delivery_target, 'local',
+            @recurring, @max_runs, @end_at, @schedule_rule, 0,
+            @budget_limit_tokens, @budget_window,
+            0, @enabled, @lifecycle_status,
+            @next_run_at, NULL, 0, NULL,
+            'idle', 0, NULL, NULL,
+            @mode, @thought_level,
+            @execution_signature,
+            @created_at, @updated_at
+          )`,
       ).run({
         automation_id: automationId,
         title: params.title,
@@ -375,6 +436,9 @@ export class AutomationRepo {
         max_runs: params.maxRuns ?? null,
         end_at: params.endAt ?? null,
         schedule_rule: params.scheduleRule ? JSON.stringify(params.scheduleRule) : null,
+        budget_limit_tokens: params.budget?.limitTokens ?? null,
+        budget_window: params.budget?.window ?? null,
+        execution_signature: executionSignature,
         enabled: options.lifecycleStatus === "completed" ? 0 : 1,
         lifecycle_status: options.lifecycleStatus ?? "active",
         next_run_at: options.nextRunAt,
@@ -540,8 +604,26 @@ export class AutomationRepo {
           ? 1
           : 0
         : existing.enabled,
+      budget_limit_tokens:
+        params.budget === undefined
+          ? existing.budget_limit_tokens
+          : (params.budget?.limitTokens ?? null),
+      budget_window:
+        params.budget === undefined ? existing.budget_window : (params.budget?.window ?? null),
       updated_at: now,
     };
+    // 签名始终对合并后的最终行计算：intent 字段即使未变也重签出相同字节，
+    // 非意图字段（title/budget 等）的变化不会使签名失效。签名失败即写入失败（fail-closed）。
+    next.execution_signature = await this.signExecutionIntent({
+      automationId: next.automation_id,
+      prompt: next.prompt,
+      cronExpr: next.cron_expr,
+      scheduleRule: next.schedule_rule
+        ? (JSON.parse(next.schedule_rule) as ZCodeAutomation["scheduleRule"])
+        : undefined,
+      maxRuns: next.max_runs ?? undefined,
+      endAt: next.end_at ?? undefined,
+    });
     this.writeRow(next);
     return rowToAutomation(next);
   }
@@ -610,6 +692,98 @@ export class AutomationRepo {
         now: Date.now(),
         workspace_key: workspaceKey ?? null,
       });
+  }
+
+  // ---- 预算与执行意图（见 packages/services/specs/automation-budget-control.md、
+  // automation-execution-integrity.md）----
+
+  /** 预算耗尽硬停：paused + 停用 + 释放认领 + lastError。仅 active 状态可被此路径暂停。 */
+  async pauseForBudgetExhaustion(automationId: string, message: string): Promise<void> {
+    await this.ensureReady();
+    this.getDatabase()
+      .prepare(
+        `UPDATE automations
+        SET lifecycle_status = 'paused', enabled = 0, running = 0, claimed_at = NULL,
+            last_error = @message, updated_at = @now
+        WHERE automation_id = @id AND lifecycle_status = 'active'`,
+      )
+      .run({ id: automationId, message, now: Date.now() });
+  }
+
+  /** 当前窗口桶的累计 spend；无行返回 0。 */
+  async sumSpend(automationId: string, bucket: string): Promise<number> {
+    await this.ensureReady();
+    const row = this.getDatabase()
+      .prepare(
+        `SELECT COALESCE(SUM(total_tokens), 0) AS total FROM automation_spend
+        WHERE automation_id = @automation_id AND bucket = @bucket`,
+      )
+      .get({ automation_id: automationId, bucket }) as { total: number | bigint };
+    return Number(row.total);
+  }
+
+  /**
+   * 按 run_id 幂等回写一条 run 的 spend：重复结算替换而非累加。
+   * bucket 由调用方按记录时刻的窗口计算；替换语义保证迟到/重放结算不会放大累计。
+   */
+  async recordRunSpend(params: {
+    automationId: string;
+    runId: string;
+    bucket: string;
+    totalTokens: number;
+    recordedAt: number;
+  }): Promise<void> {
+    await this.ensureReady();
+    this.getDatabase()
+      .prepare(
+        `INSERT INTO automation_spend (run_id, automation_id, bucket, total_tokens, recorded_at)
+        VALUES (@run_id, @automation_id, @bucket, @total_tokens, @recorded_at)
+        ON CONFLICT(run_id) DO UPDATE SET
+          bucket = excluded.bucket,
+          total_tokens = excluded.total_tokens,
+          recorded_at = excluded.recorded_at`,
+      )
+      .run({
+        run_id: params.runId,
+        automation_id: params.automationId,
+        bucket: params.bucket,
+        total_tokens: params.totalTokens,
+        recorded_at: params.recordedAt,
+      });
+  }
+
+  /** 派发前校验用：读取被签名的执行意图与签名；automation 已删除时返回 null（交由既有派发路径失败）。 */
+  async getExecutionIntent(automationId: string): Promise<AutomationExecutionIntentRecord | null> {
+    await this.ensureReady();
+    const row = this.getDatabase()
+      .prepare(
+        `SELECT automation_id, prompt, cron_expr, schedule_rule, max_runs, end_at, execution_signature
+        FROM automations WHERE automation_id = @id`,
+      )
+      .get({ id: automationId }) as
+      | Pick<
+          AutomationRow,
+          | "automation_id"
+          | "prompt"
+          | "cron_expr"
+          | "schedule_rule"
+          | "max_runs"
+          | "end_at"
+          | "execution_signature"
+        >
+      | undefined;
+    if (!row) return null;
+    return {
+      automationId: row.automation_id,
+      prompt: row.prompt,
+      cronExpr: row.cron_expr,
+      scheduleRule: row.schedule_rule
+        ? (JSON.parse(row.schedule_rule) as ZCodeAutomation["scheduleRule"])
+        : undefined,
+      maxRuns: row.max_runs ?? undefined,
+      endAt: row.end_at ?? undefined,
+      executionSignature: row.execution_signature ?? undefined,
+    };
   }
 
   /**
@@ -809,6 +983,9 @@ export class AutomationRepo {
             a.end_at AS a_end_at,
             a.schedule_rule AS a_schedule_rule,
             a.schedule_edited_by_user AS a_schedule_edited_by_user,
+            a.budget_limit_tokens AS a_budget_limit_tokens,
+            a.budget_window AS a_budget_window,
+            a.execution_signature AS a_execution_signature,
             a.run_count AS a_run_count,
             a.scheduled_run_count AS a_scheduled_run_count,
             a.enabled AS a_enabled,
@@ -886,6 +1063,9 @@ export class AutomationRepo {
             end_at: (row["a_end_at"] as number | null) ?? null,
             schedule_rule: (row["a_schedule_rule"] as string | null) ?? null,
             schedule_edited_by_user: row["a_schedule_edited_by_user"] as number,
+            budget_limit_tokens: (row["a_budget_limit_tokens"] as number | null) ?? null,
+            budget_window: (row["a_budget_window"] as string | null) ?? null,
+            execution_signature: (row["a_execution_signature"] as string | null) ?? null,
             run_count: row["a_run_count"] as number,
             scheduled_run_count: row["a_scheduled_run_count"] as number,
             enabled: row["a_enabled"] as number,
@@ -1437,6 +1617,8 @@ export class AutomationRepo {
           recurring = @recurring, max_runs = @max_runs, end_at = @end_at,
           schedule_rule = @schedule_rule,
           schedule_edited_by_user = @schedule_edited_by_user,
+          budget_limit_tokens = @budget_limit_tokens, budget_window = @budget_window,
+          execution_signature = @execution_signature,
           next_run_at = @next_run_at, lifecycle_status = @lifecycle_status,
           dispatch_attempts = @dispatch_attempts, retry_at = @retry_at, dispatch_status = @dispatch_status,
           enabled = @enabled, updated_at = @updated_at
@@ -1457,6 +1639,9 @@ export class AutomationRepo {
         end_at: row.end_at,
         schedule_rule: row.schedule_rule,
         schedule_edited_by_user: row.schedule_edited_by_user,
+        budget_limit_tokens: row.budget_limit_tokens,
+        budget_window: row.budget_window,
+        execution_signature: row.execution_signature,
         next_run_at: row.next_run_at,
         lifecycle_status: row.lifecycle_status,
         dispatch_attempts: row.dispatch_attempts,
@@ -1465,5 +1650,16 @@ export class AutomationRepo {
         enabled: row.enabled,
         updated_at: row.updated_at,
       });
+  }
+
+  /** 对最终行意图签名；密钥提供者缺失/读取失败时抛错，调用方不得落库未签名行。 */
+  private async signExecutionIntent(
+    intent: Parameters<typeof automationIntentFromAutomation>[0] & { automationId: string },
+  ): Promise<string> {
+    if (!this.signingKeyProvider) {
+      throw new Error("Automation signing key provider 未配置，拒绝写入未签名的执行意图");
+    }
+    const key = await this.signingKeyProvider.getKey();
+    return computeAutomationExecutionSignature(automationIntentFromAutomation(intent), key);
   }
 }

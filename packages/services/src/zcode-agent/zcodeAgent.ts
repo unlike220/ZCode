@@ -224,7 +224,10 @@ export interface ZCodeAgentAppUsageParams {
   timeZone?: string;
 }
 
-export interface ZCodeAgentTaskTokenUsageParams extends ZCodeAgentSessionTarget {}
+export interface ZCodeAgentTaskTokenUsageParams extends ZCodeAgentSessionTarget {
+  /** additive：可选 prompt traceId 过滤（automation run 的 prompt traceId 即 runId）。 */
+  traceId?: string;
+}
 
 export interface ZCodeAgentReadSessionParams extends ZCodeAgentSessionTarget {
   deliveryKind?: ZCodeDeliveryKind;

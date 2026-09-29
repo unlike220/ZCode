@@ -1,4 +1,9 @@
-import type { ZCodeAutomationRunOutcome, ZCodeAutomationTrigger } from "@zcode/shared";
+import type {
+  ZCodeAutomation,
+  ZCodeAutomationRunOutcome,
+  ZCodeAutomationTrigger,
+} from "@zcode/shared";
+import { automationBudgetWindowBucket } from "@zcode/services/node";
 
 interface CronRunLifecycleRepo {
   ensureRunClaimed(params: {
@@ -124,4 +129,66 @@ export async function settleCronRunTerminalOutcome(
   await recordCronRunOutcomeBestEffort(params);
   if (params.trigger !== "manual") return;
   await releaseManualClaimBestEffort(params);
+}
+
+/** spend 记账所需的窄 repo 面；AutomationRepo 结构化满足。 */
+interface CronRunSpendRepo {
+  get(automationId: string): Promise<Pick<ZCodeAutomation, "budget"> | null>;
+  recordRunSpend(params: {
+    automationId: string;
+    runId: string;
+    bucket: string;
+    totalTokens: number;
+    recordedAt: number;
+  }): Promise<void>;
+}
+
+/** spend 记账所需的用量查询面；IZcodeAgentService 结构化满足。 */
+export interface CronRunSpendUsageSource {
+  getTaskTokenUsage(params: {
+    workspacePath: string;
+    workspaceIdentity?: string;
+    sessionId: string;
+    traceId?: string;
+  }): Promise<{ totalTokens: number }>;
+}
+
+/**
+ * run 终态后按 traceId 回写该 run 的 token 用量（预算 spend 的事实来源）。
+ * 仅配置了预算的 automation 记账；失败只告警——under-count 安全，over-count 永不发生。
+ * 见 packages/services/specs/automation-budget-control.md 的事件顺序。
+ */
+export async function recordCronRunSpendBestEffort(
+  params: CronRunLifecycleIdentity & {
+    sessionId: string;
+    workspacePath: string;
+    workspaceIdentity?: string;
+    repo: CronRunSpendRepo;
+    usage: CronRunSpendUsageSource | null;
+    logWarn: LogWarn;
+  },
+): Promise<void> {
+  try {
+    if (!params.usage) return;
+    const automation = await params.repo.get(params.automationId);
+    if (!automation?.budget) return;
+    const usage = await params.usage.getTaskTokenUsage({
+      workspacePath: params.workspacePath,
+      ...(params.workspaceIdentity ? { workspaceIdentity: params.workspaceIdentity } : {}),
+      sessionId: params.sessionId,
+      traceId: params.runId,
+    });
+    await params.repo.recordRunSpend({
+      automationId: params.automationId,
+      runId: params.runId,
+      bucket: automationBudgetWindowBucket(automation.budget.window, Date.now()),
+      totalTokens: usage.totalTokens,
+      recordedAt: Date.now(),
+    });
+  } catch (error) {
+    params.logWarn(
+      `记录定时任务 token 用量失败 automation=${params.automationId} runId=${params.runId}`,
+      error,
+    );
+  }
 }

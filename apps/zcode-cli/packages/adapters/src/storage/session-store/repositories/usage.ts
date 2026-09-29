@@ -591,6 +591,8 @@ export async function queryTaskUsage(
   db: DatabaseSync,
   input: TaskUsageQueryInput,
 ): Promise<TaskUsageQueryResult> {
+  // additive：可选 traceId 过滤（automation 预算按单条 run 聚合）。缺省保持会话级聚合。
+  const traceFilter = input.traceID ? "and trace_id = ?" : "";
   const rows = db
     .prepare(
       `select
@@ -605,10 +607,10 @@ export async function queryTaskUsage(
          computed_total_tokens as computedTotalTokens,
          provider_total_tokens as providerTotalTokens
        from model_usage
-       where session_id = ?
+       where session_id = ? ${traceFilter}
        order by started_at asc, id asc`,
     )
-    .all(input.sessionID) as Array<{
+    .all(...(input.traceID ? [input.sessionID, input.traceID] : [input.sessionID])) as Array<{
     cacheCreationTokens: number;
     cacheReadTokens: number;
     computedTotalTokens: number;

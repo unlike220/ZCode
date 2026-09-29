@@ -785,6 +785,9 @@ export type V4UsageStatsResult = z.infer<typeof v4UsageStatsResultSchema>;
 export const v4ConversationUsageParamsSchema = z
   .object({
     sessionId: z.string().min(1),
+    // additive：可选 prompt traceId 过滤（automation run 的 prompt traceId 即 runId）。
+    // 缺省保持既有会话级聚合；旧 CLI 严格 schema 拒绝未知字段时调用方按失败降级。
+    traceId: z.string().min(1).optional(),
   })
   .strict();
 export type V4ConversationUsageParams = z.infer<typeof v4ConversationUsageParamsSchema>;

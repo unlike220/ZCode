@@ -18,6 +18,32 @@ export function isAutomationCreateLimitError(error: unknown): boolean {
 /** 整条 automation 的生命周期。 */
 export type ZCodeAutomationLifecycleStatus = "active" | "completed" | "failed" | "paused";
 
+/** 预算窗口：UTC 日历日 / UTC 日历月 / 整个生命周期。 */
+export type ZCodeAutomationBudgetWindow = "day" | "month" | "lifetime";
+
+/** 单条 automation 的 token 预算；spend 口径与任务用量聚合一致（增量 input + output + reasoning）。 */
+export interface ZCodeAutomationBudget {
+  limitTokens: number;
+  window: ZCodeAutomationBudgetWindow;
+}
+
+/** 预算耗尽错误码；message 中跨 RPC 保留供 UI 识别。 */
+export const AUTOMATION_BUDGET_EXHAUSTED_ERROR_CODE = "AUTOMATION_BUDGET_EXHAUSTED";
+
+export function isAutomationBudgetExhaustedError(error: unknown): boolean {
+  const message = typeof error === "string" ? error : error instanceof Error ? error.message : "";
+  return message.includes(AUTOMATION_BUDGET_EXHAUSTED_ERROR_CODE);
+}
+
+/** 派发前执行意图签名校验失败错误码；run 永不执行，automation 转 failed 可 restart 恢复。 */
+export const AUTOMATION_INTENT_SIGNATURE_MISMATCH_ERROR_CODE =
+  "AUTOMATION_INTENT_SIGNATURE_MISMATCH";
+
+export function isAutomationIntentSignatureMismatchError(error: unknown): boolean {
+  const message = typeof error === "string" ? error : error instanceof Error ? error.message : "";
+  return message.includes(AUTOMATION_INTENT_SIGNATURE_MISMATCH_ERROR_CODE);
+}
+
 /** 单条 automation 当前一轮的派发信息态（供 UI/诊断）。 */
 export type ZCodeAutomationDispatchStatus =
   | "idle"
@@ -85,6 +111,8 @@ export interface ZCodeAutomation {
   /** 自定义重复的截止时间（本地所选日期的日末，毫秒时间戳）。 */
   endAt?: number;
   scheduleRule?: ZCodeAutomationScheduleRule;
+  /** 可选 token 预算；调度认领与手动运行前按窗口聚合 spend，耗尽即硬停（paused）。 */
+  budget?: ZCodeAutomationBudget;
   /** 会话来源的只读调度是否已被用户在管理页显式删除并重设。 */
   scheduleEditedByUser?: boolean;
   runCount: number;
@@ -164,6 +192,8 @@ export interface ZCodeAutomationCreateParams {
   maxRuns?: number;
   endAt?: number;
   scheduleRule?: ZCodeAutomationScheduleRule;
+  /** 可选 token 预算（语义同 ZCodeAutomation.budget）。 */
+  budget?: ZCodeAutomationBudget;
   /**
    * 会话侧自定义重复 carrier。每 N 分钟/小时/天/周/月/年均配对提交 intervalUnit + interval，
    * 真实间隔由 service 层归一化为权威 scheduleRule 承载；cronExpr 仅作合法兼容展示。
@@ -190,6 +220,8 @@ export interface ZCodeAutomationUpdateParams {
   endAt?: number | null;
   /** undefined=不修改；null=恢复为普通 cron。 */
   scheduleRule?: ZCodeAutomationScheduleRule | null;
+  /** undefined=不修改；null=清除预算（不再门控）。 */
+  budget?: ZCodeAutomationBudget | null;
   /**
    * 会话侧自定义重复 carrier（同 create 侧）。配对提交 intervalUnit + interval，service 层
    * 归一化为权威 scheduleRule（anchorAt 重置为本次修改时刻）。undefined=不修改。

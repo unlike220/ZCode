@@ -25,6 +25,9 @@ import {
   TID_AUTOMATION_CUSTOM_REPEAT_EDIT,
   TID_AUTOMATION_CUSTOM_UNIT_OPTION,
   TID_AUTOMATION_CUSTOM_UNIT_SELECT,
+  TID_AUTOMATION_BUDGET_ENABLED,
+  TID_AUTOMATION_BUDGET_LIMIT,
+  TID_AUTOMATION_BUDGET_WINDOW,
   TID_AUTOMATION_FORM_PROMPT,
   TID_AUTOMATION_FORM_SUBMIT,
   TID_AUTOMATION_FORM_TITLE,
@@ -39,6 +42,7 @@ import {
   TID_AUTOMATION_YEAR_MONTHDAY,
   ZCODE_AGENT_PROVIDER,
   type ZCodeAutomation,
+  type ZCodeAutomationBudgetWindow,
   type ZCodeAutomationRun,
   type ZCodeAutomationScheduleRule,
 } from "@zcode/shared";
@@ -67,6 +71,7 @@ import { SettingsBreadcrumbReporter } from "@/settings/SettingsHeaderBreadcrumb.
 import { Button } from "@/components/ui/button.js";
 import { toast } from "@/components/ui/toast.js";
 import { Input } from "@/components/ui/input.js";
+import { Checkbox } from "@/components/ui/checkbox.js";
 import {
   Select,
   SelectContent,
@@ -1252,6 +1257,14 @@ export function AutomationEditView({
   const currentEditSignaturesRef = useRef<AutomationEditFieldSignatures | null>(null);
   const touchedFieldBaselinesRef = useRef<Partial<AutomationEditFieldSignatures>>({});
   const [endAt, setEndAt] = useState<number | undefined>(() => editing?.endAt);
+  // token 预算：启用后按窗口聚合 spend，耗尽即自动暂停（automation-budget-control.md）。
+  const [budgetEnabled, setBudgetEnabled] = useState(editing?.budget !== undefined);
+  const [budgetLimitInput, setBudgetLimitInput] = useState(() =>
+    editing?.budget ? String(editing.budget.limitTokens) : "",
+  );
+  const [budgetWindow, setBudgetWindow] = useState<ZCodeAutomationBudgetWindow>(
+    () => editing?.budget?.window ?? "month",
+  );
   // 目标项目 key(仅新建时可改;编辑锁定为 automation 所属项目)。
   const [workspaceKey, setWorkspaceKey] = useState<string | null>(null);
 
@@ -1313,6 +1326,9 @@ export function AutomationEditView({
       setThoughtLevel(editingThoughtLevel);
       setBuilder(initialBuilder(editing, initialDraft));
       setEndAt(editing.endAt);
+      setBudgetEnabled(editing.budget !== undefined);
+      setBudgetLimitInput(editing.budget ? String(editing.budget.limitTokens) : "");
+      setBudgetWindow(editing.budget?.window ?? "month");
       setWorkspaceKey(
         resolveWorkspaceKey({
           workspacePath: editing.workspacePath,
@@ -1335,6 +1351,9 @@ export function AutomationEditView({
       setThoughtLevel("");
       setBuilder(initialBuilder(editing, initialDraft));
       setEndAt(undefined);
+      setBudgetEnabled(false);
+      setBudgetLimitInput("");
+      setBudgetWindow("month");
       setWorkspaceKey(
         reconcileAutomationWorkspaceSelectionKey(workspaceOptionsRef.current, null, {
           workspacePath: defaultWorkspacePath,
@@ -1684,6 +1703,16 @@ export function AutomationEditView({
     [builder, editing?.scheduleRule?.anchorAt],
   );
 
+  // 预算草稿：启用且限额合法时提交；编辑态关闭预算显式提交 null 以清除。
+  const parsedBudgetLimit = /^\d+$/.test(budgetLimitInput.trim())
+    ? Number(budgetLimitInput.trim())
+    : 0;
+  const budgetDraft =
+    budgetEnabled && parsedBudgetLimit > 0
+      ? { limitTokens: parsedBudgetLimit, window: budgetWindow }
+      : null;
+  const budgetInvalid = budgetEnabled && parsedBudgetLimit <= 0;
+
   const buildSubmitInput = useCallback(
     ({ modeValue }: { modeValue: string }): CreateAutomationInput | UpdateAutomationInput => {
       if (!effectiveSelection || !effectiveReasoningLevel) {
@@ -1703,6 +1732,7 @@ export function AutomationEditView({
           : currentScheduleRule
             ? { scheduleRule: currentScheduleRule }
             : {}),
+        ...(budgetDraft ? { budget: budgetDraft } : editing ? { budget: null } : {}),
         ...(editing && touchedFields.has("schedule") ? { scheduleEditedByUser: true } : {}),
         mode: modeValue,
         modelSelection: effectiveSelection,
@@ -1713,6 +1743,7 @@ export function AutomationEditView({
       currentScheduleRule,
       editing,
       endAt,
+      budgetDraft,
       preserveSessionCreatedSchedule,
       prompt,
       effectiveSelection,
@@ -1734,6 +1765,7 @@ export function AutomationEditView({
           ? null
           : normalizeAutomationScheduleRule(currentScheduleRule ?? null),
       }),
+      budget: JSON.stringify(budgetDraft),
       mode,
       thoughtLevel,
       model,
@@ -1743,6 +1775,7 @@ export function AutomationEditView({
     currentScheduleRule,
     editing,
     endAt,
+    budgetDraft,
     preserveSessionCreatedSchedule,
     mode,
     model,
@@ -1775,6 +1808,12 @@ export function AutomationEditView({
         return false;
       }
       if (!canSubmit) return false;
+      if (budgetInvalid) {
+        toast(intl.formatMessage({ id: "automations.form.budget.invalid" }), {
+          variant: "warning",
+        });
+        return false;
+      }
       // 防止刚改选择尚未取得对应 View 时，快速保存采用上一个输入的有效结果。
       if (modelSelection.current !== model || thoughtLevelRef.current !== thoughtLevel)
         return false;
@@ -1827,6 +1866,7 @@ export function AutomationEditView({
     },
     [
       buildSubmitInput,
+      budgetInvalid,
       changedFields,
       recommendStartPlan,
       canSubmit,
@@ -2556,6 +2596,79 @@ export function AutomationEditView({
                 />
               </div>
             )}
+
+            {/* Token budget：窗口内用量达到上限即自动暂停（hard stop）；
+                恢复需用户调高预算后手动重新启用。 */}
+            <div className={AUTOMATION_FORM_FIELD_CLASSNAME}>
+              <label
+                htmlFor="automation-budget-limit"
+                className="text-ui-base font-normal leading-5 text-foreground-subtle"
+              >
+                {intl.formatMessage({ id: "automations.form.budget.label" })}
+              </label>
+              <div className="flex flex-wrap items-center gap-2">
+                <Checkbox
+                  data-testid={TID_AUTOMATION_BUDGET_ENABLED}
+                  id="automation-budget-enabled"
+                  checked={budgetEnabled}
+                  onCheckedChange={(checked) => {
+                    markFieldTouched("budget");
+                    setBudgetEnabled(checked === true);
+                  }}
+                  aria-label={intl.formatMessage({ id: "automations.form.budget.label" })}
+                />
+                {budgetEnabled ? (
+                  <>
+                    <Input
+                      data-testid={TID_AUTOMATION_BUDGET_LIMIT}
+                      id="automation-budget-limit"
+                      value={budgetLimitInput}
+                      inputMode="numeric"
+                      placeholder={intl.formatMessage({
+                        id: "automations.form.budget.limitPlaceholder",
+                      })}
+                      aria-invalid={budgetInvalid}
+                      onChange={(event) => {
+                        markFieldTouched("budget");
+                        setBudgetLimitInput(event.target.value);
+                      }}
+                      className={cn(
+                        "h-9 w-40 rounded-xl bg-input px-3 tabular-nums",
+                        AUTOMATION_FORM_INPUT_TYPOGRAPHY_CLASSNAME,
+                      )}
+                    />
+                    <Select
+                      value={budgetWindow}
+                      onValueChange={(value) => {
+                        markFieldTouched("budget");
+                        setBudgetWindow(value as ZCodeAutomationBudgetWindow);
+                      }}
+                    >
+                      <SelectTrigger
+                        data-testid={TID_AUTOMATION_BUDGET_WINDOW}
+                        className="h-9 w-40 rounded-xl bg-input"
+                      >
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="day">
+                          {intl.formatMessage({ id: "automations.form.budget.window.day" })}
+                        </SelectItem>
+                        <SelectItem value="month">
+                          {intl.formatMessage({ id: "automations.form.budget.window.month" })}
+                        </SelectItem>
+                        <SelectItem value="lifetime">
+                          {intl.formatMessage({ id: "automations.form.budget.window.lifetime" })}
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </>
+                ) : null}
+              </div>
+              <p className="text-ui-sm leading-5 text-foreground-subtlest">
+                {intl.formatMessage({ id: "automations.form.budget.hint" })}
+              </p>
+            </div>
 
             {/* Instructions + 底部项目/模型选择器 */}
             <div className={AUTOMATION_FORM_FIELD_CLASSNAME}>

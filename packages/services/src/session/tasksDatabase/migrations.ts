@@ -64,6 +64,10 @@ const definitions = [
     id: "0003_official_glm_selection",
     checksumInput: [OFFICIAL_GLM_SELECTION_MIGRATION_SQL],
   },
+  {
+    id: "0004_automation_budget_integrity",
+    checksumInput: ["automation-budget-integrity-v1"],
+  },
 ] as const;
 
 export function runTasksDatabaseMigrations(
@@ -113,7 +117,10 @@ export function runTasksDatabaseMigrations(
       options.onProgress?.("migrating", { ...migrationFacts });
       if (migration.id === "0001_adopt_task_schema") adoptSchema(db);
       else if (migration.id === "0002_provider_selection") importLegacyAutomationSelections(db);
-      else db.exec(OFFICIAL_GLM_SELECTION_MIGRATION_SQL);
+      else if (migration.id === "0003_official_glm_selection")
+        db.exec(OFFICIAL_GLM_SELECTION_MIGRATION_SQL);
+      else if (migration.id === "0004_automation_budget_integrity")
+        adoptAutomationBudgetIntegrity(db);
       migrationFacts.executedCount++;
       db.prepare("INSERT INTO tasks_schema_migration VALUES(?,?,?)").run(
         migration.id,
@@ -154,6 +161,36 @@ function adoptSchema(db: DatabaseSync): void {
     GROUP BY workspace_key, session_id HAVING count(*)>1 LIMIT 1`)
     .get();
   if (!duplicate) db.exec(boundIndex);
+}
+
+/**
+ * 0004：automation token 预算 + 执行意图签名（automation-budget-control.md /
+ * automation-execution-integrity.md）。冻结的 0001 `columns` 账本不能追加新列，
+ * 否则已应用安装的 checksum 会失配；本迁移自持列清单并按 PRAGMA 幂等补列。
+ */
+function adoptAutomationBudgetIntegrity(db: DatabaseSync): void {
+  const budgetColumns = [
+    ["automations", "budget_limit_tokens", "INTEGER"],
+    ["automations", "budget_window", "TEXT"],
+    ["automations", "execution_signature", "TEXT"],
+  ] as const;
+  for (const [table, column, definition] of budgetColumns) {
+    const existing = db.prepare(`PRAGMA table_info(${table})`).all();
+    if (existing.some((entry) => entry.name === column)) continue;
+    db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+  }
+  db.exec(`
+      CREATE TABLE IF NOT EXISTS automation_spend (
+        run_id TEXT PRIMARY KEY,
+        automation_id TEXT NOT NULL,
+        bucket TEXT NOT NULL,
+        total_tokens INTEGER NOT NULL,
+        recorded_at INTEGER NOT NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_automation_spend_bucket
+      ON automation_spend (automation_id, bucket);
+    `);
 }
 
 /** 交接只复用已完成初始化；每个新连接仍按冻结账本确认，替换/清空文件不能假 ready。 */

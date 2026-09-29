@@ -248,8 +248,34 @@ export {
   DISPATCH_MAX_ATTEMPTS,
   CLAIM_STALE_MS,
   computeRetryAt,
+  type AutomationExecutionIntentRecord,
 } from "./session/automationRepo.js";
 export { AutomationService, InvalidCronExprError } from "./session/automationService.js";
+// automation 预算门控与执行意图签名（scheduler 认领门控 / host 派发校验共用）。
+export {
+  assertValidAutomationBudget,
+  automationBudgetWindowBucket,
+  AutomationBudgetExhaustedError,
+  enforceAutomationBudgetAtClaim,
+  enforceAutomationBudgetForManualRun,
+  evaluateAutomationBudget,
+} from "./session/automationBudget.js";
+export {
+  AUTOMATION_EXECUTION_INTENT_TAG,
+  AutomationIntentSignatureMismatchError,
+  automationIntentFromAutomation,
+  computeAutomationExecutionSignature,
+  createDefaultAutomationSigningKeyProvider,
+  createDefaultReadOnlyAutomationSigningKeyProvider,
+  createFileAutomationSigningKeyProvider,
+  createFileAutomationSigningKeyStore,
+  createReadOnlyAutomationSigningKeyProvider,
+  createStaticAutomationSigningKeyProvider,
+  serializeAutomationExecutionIntent,
+  verifyAutomationExecutionSignature,
+  type AutomationExecutionIntent,
+  type AutomationSigningKeyProvider,
+} from "./session/automationSigning.js";
 // 闲时任务与 automation 同库不同表；类型/常量全独立。
 export { OffPeakTaskRepo, OFF_PEAK_CLAIM_STALE_MS } from "./session/offPeakTaskRepo.js";
 // host 域终态回填 files_changed 复用现有 task diff 汇总。

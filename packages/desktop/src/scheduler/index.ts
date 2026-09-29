@@ -11,6 +11,7 @@
 import {
   AutomationRepo,
   computeAutomationNextRunAt,
+  enforceAutomationBudgetAtClaim,
   isOneShotAutomation,
   OffPeakTaskRepo,
 } from "@zcode/services/node";
@@ -159,6 +160,17 @@ async function handleClaimed(automation: ZCodeAutomation, now: number): Promise<
     );
     return;
   }
+
+  // 预算硬停：认领后、派发前评估 token 预算；耗尽即暂停 automation 并落 skipped run，
+  // 不产生派发请求，也不消耗 dispatch_attempts/重试机制（见 automation-budget-control.md）。
+  const budgetBlocked = await enforceAutomationBudgetAtClaim({
+    repo,
+    automation,
+    now,
+    runId,
+    log: { info: (message) => log("info", message) },
+  });
+  if (budgetBlocked) return;
 
   // 正常派发：先落/更新 run 台账（claimed），再把请求发回 main。
   await repo.upsertRunClaimed({
